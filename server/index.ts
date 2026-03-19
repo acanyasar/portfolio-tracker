@@ -7,6 +7,7 @@ import { storage } from "./storage";
 import { configurePassport, sessionMiddleware, requireAuth } from "./auth";
 
 const app = express();
+app.set("trust proxy", 1); // Required for Render/any reverse proxy: makes req.secure true so session cookies are set
 const httpServer = createServer(app);
 
 declare module "http" {
