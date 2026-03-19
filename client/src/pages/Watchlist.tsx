@@ -9,12 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { cn } from "@/lib/utils";
+import { cn, fmt } from "@/lib/utils";
 import type { WatchlistItem, InsertWatchlistItem } from "@shared/schema";
-
-function fmt(n: number, d = 2) {
-  return n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
-}
 
 interface PriceData {
   ticker: string;

@@ -6,7 +6,7 @@ import {
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { cn, fmt } from "@/lib/utils";
 
 interface EnrichedHolding {
   id: number;
@@ -34,10 +34,6 @@ interface PortfolioSummary {
   totalPnl: number;
   totalPnlPercent: number;
   cashValue?: number;
-}
-
-function fmt(n: number, d = 2) {
-  return n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
 }
 
 const COLORS = [

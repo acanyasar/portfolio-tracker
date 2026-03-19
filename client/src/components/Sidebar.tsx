@@ -26,6 +26,17 @@ interface Props {
   onToggleCollapse: () => void;
 }
 
+const LogoIcon = () => (
+  <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
+    <svg aria-label="Portfolio Tracker Logo" viewBox="0 0 28 28" fill="none" className="w-5 h-5">
+      <rect x="3" y="14" width="5" height="11" rx="1" fill="hsl(var(--primary))" />
+      <rect x="11" y="9" width="5" height="16" rx="1" fill="hsl(var(--primary))" opacity="0.75" />
+      <rect x="19" y="4" width="5" height="21" rx="1" fill="hsl(var(--primary))" opacity="0.5" />
+      <path d="M3 18 L8.5 12 L14 15 L19.5 8 L25 5" stroke="hsl(var(--primary))" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  </div>
+);
+
 export default function Sidebar({ theme, onToggleTheme, isOpen, onClose, collapsed, onToggleCollapse }: Props) {
   const [location] = useHashLocation();
   const { user, logout } = useAuth();
@@ -43,32 +54,16 @@ export default function Sidebar({ theme, onToggleTheme, isOpen, onClose, collaps
       {/* Header: Logo + Bell + Buttons */}
       <div className={cn("py-4 border-b border-border", collapsed ? "lg:px-2" : "px-4")}>
         <div className={cn("flex items-center", collapsed ? "lg:justify-center" : "justify-between")}>
-          {/* Logo */}
+          {/* Logo — shows text when expanded, icon-only when collapsed */}
           <div className={cn("flex items-center gap-2.5 min-w-0", collapsed && "lg:hidden")}>
-            <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
-              <svg aria-label="Portfolio Tracker Logo" viewBox="0 0 28 28" fill="none" className="w-5 h-5">
-                <rect x="3" y="14" width="5" height="11" rx="1" fill="hsl(var(--primary))" />
-                <rect x="11" y="9" width="5" height="16" rx="1" fill="hsl(var(--primary))" opacity="0.75" />
-                <rect x="19" y="4" width="5" height="21" rx="1" fill="hsl(var(--primary))" opacity="0.5" />
-                <path d="M3 18 L8.5 12 L14 15 L19.5 8 L25 5" stroke="hsl(var(--primary))" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
+            <LogoIcon />
             <div>
               <div className="text-sm font-semibold text-foreground leading-tight">Portfolio</div>
               <div className="text-xs text-muted-foreground leading-tight">Tracker</div>
             </div>
           </div>
-
-          {/* Collapsed desktop: just the logo icon */}
           <div className={cn("hidden shrink-0", collapsed && "lg:flex items-center justify-center")}>
-            <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center">
-              <svg aria-label="Portfolio Tracker Logo" viewBox="0 0 28 28" fill="none" className="w-5 h-5">
-                <rect x="3" y="14" width="5" height="11" rx="1" fill="hsl(var(--primary))" />
-                <rect x="11" y="9" width="5" height="16" rx="1" fill="hsl(var(--primary))" opacity="0.75" />
-                <rect x="19" y="4" width="5" height="21" rx="1" fill="hsl(var(--primary))" opacity="0.5" />
-                <path d="M3 18 L8.5 12 L14 15 L19.5 8 L25 5" stroke="hsl(var(--primary))" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
+            <LogoIcon />
           </div>
 
           {/* Right side controls */}

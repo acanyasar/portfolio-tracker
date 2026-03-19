@@ -181,6 +181,75 @@ async function fetchYahooDividends(ticker: string): Promise<{
   }
 }
 
+async function fetchDividendHistory5yr(ticker: string): Promise<{
+  cagr1yr: number | null;
+  cagr3yr: number | null;
+  cagr5yr: number | null;
+  streak: number;
+  annualDps: Array<{ year: number; dps: number }>;
+} | null> {
+  try {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const sixYearsAgo = nowSec - 6 * 365 * 24 * 60 * 60;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}` +
+      `?period1=${sixYearsAgo}&period2=${nowSec}&interval=1mo&events=dividends`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json",
+      },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const divEvents = data?.chart?.result?.[0]?.events?.dividends;
+    if (!divEvents || Object.keys(divEvents).length === 0) return null;
+
+    // Group dividends by calendar year
+    const byYear: Record<number, number> = {};
+    for (const div of Object.values(divEvents) as Array<{ amount: number; date: number }>) {
+      if (div.amount <= 0) continue;
+      const year = new Date(div.date * 1000).getFullYear();
+      byYear[year] = (byYear[year] ?? 0) + div.amount;
+    }
+
+    const currentYear = new Date().getFullYear();
+    // Use the last complete year as the most recent reference point
+    const latestYear = currentYear - 1;
+
+    // Build sparkline data for last 5 complete years
+    const annualDps: Array<{ year: number; dps: number }> = [];
+    for (let y = latestYear - 4; y <= latestYear; y++) {
+      if (byYear[y] != null) annualDps.push({ year: y, dps: byYear[y] });
+    }
+
+    const computeCagr = (startYear: number, endYear: number): number | null => {
+      const start = byYear[startYear];
+      const end = byYear[endYear];
+      if (!start || !end || start <= 0) return null;
+      const n = endYear - startYear;
+      return n > 0 ? Math.pow(end / start, 1 / n) - 1 : null;
+    };
+
+    const cagr1yr = computeCagr(latestYear - 1, latestYear);
+    const cagr3yr = computeCagr(latestYear - 3, latestYear);
+    const cagr5yr = computeCagr(latestYear - 5, latestYear);
+
+    // Consecutive years of dividend increases (going back from most recent)
+    let streak = 0;
+    for (let y = latestYear; y >= latestYear - 5; y--) {
+      if (byYear[y] != null && byYear[y - 1] != null && byYear[y] > byYear[y - 1]) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+
+    return { cagr1yr, cagr3yr, cagr5yr, streak, annualDps };
+  } catch {
+    return null;
+  }
+}
+
 async function fetchHistoricalPrices(ticker: string, range = "1y"): Promise<Array<{ date: string; close: number }>> {
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1wk&range=${range}`;
@@ -560,8 +629,11 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
-  app.post("/api/prices/invalidate", async (_req, res) => {
-    await storage.clearPriceCache();
+  app.post("/api/prices/invalidate", async (req, res) => {
+    const userId = (req.user as User).id;
+    const holdings = await storage.getHoldings(userId);
+    const tickers = holdings.map(h => h.ticker);
+    await storage.clearPriceCacheForTickers(tickers);
     res.status(204).end();
   });
 
@@ -613,6 +685,36 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     );
     const totalAnnualIncome = results.reduce((s, r) => s + r.annualIncome, 0);
     res.json({ holdings: results, totalAnnualIncome });
+  });
+
+  app.get("/api/portfolio/dividend-growth", async (req, res) => {
+    const userId = (req.user as User).id;
+    const holdingsList = (await storage.getHoldings(userId)).filter(h => h.ticker !== "CASH");
+    const results = await Promise.all(
+      holdingsList.map(async h => {
+        const [div, growth, priceData] = await Promise.all([
+          fetchYahooDividends(h.ticker),
+          fetchDividendHistory5yr(h.ticker),
+          getPrice(h.ticker, storage),
+        ]);
+        if (!div || div.dividendRate === 0) return null;
+        return {
+          ticker: h.ticker,
+          name: h.name,
+          shares: h.shares,
+          currentPrice: priceData?.price ?? 0,
+          dividendRate: div.dividendRate,
+          dividendYield: div.dividendYield,
+          annualIncome: div.dividendRate * h.shares,
+          cagr1yr: growth?.cagr1yr ?? null,
+          cagr3yr: growth?.cagr3yr ?? null,
+          cagr5yr: growth?.cagr5yr ?? null,
+          streak: growth?.streak ?? 0,
+          annualDps: growth?.annualDps ?? [],
+        };
+      })
+    );
+    res.json(results.filter(Boolean));
   });
 
   // ── Portfolio history ─────────────────────────────────────────

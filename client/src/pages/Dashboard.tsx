@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { cn, fmt } from "@/lib/utils";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 
 interface EnrichedHolding {
@@ -34,10 +34,6 @@ interface PortfolioSummary {
   totalPnl: number;
   totalPnlPercent: number;
   cashValue?: number;
-}
-
-function fmt(n: number, decimals = 2) {
-  return n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
 function fmtCurrency(n: number) {

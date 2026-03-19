@@ -45,6 +45,7 @@ export interface IStorage {
   setPriceCache(data: PriceCache): Promise<void>;
   getAllPriceCaches(): Promise<PriceCache[]>;
   clearPriceCache(): Promise<void>;
+  clearPriceCacheForTickers(tickers: string[]): Promise<void>;
 }
 
 // ── In-memory storage (used when DATABASE_URL is not set) ─────────────────────
@@ -221,6 +222,9 @@ export class MemoryStorage implements IStorage {
   async clearPriceCache(): Promise<void> {
     this.priceCacheMap.clear();
   }
+  async clearPriceCacheForTickers(tickers: string[]): Promise<void> {
+    for (const t of tickers) this.priceCacheMap.delete(t.toUpperCase());
+  }
 }
 
 // ── Database storage ──────────────────────────────────────────────────────────
@@ -372,6 +376,12 @@ export class DatabaseStorage implements IStorage {
   async clearPriceCache(): Promise<void> {
     const { db } = await import("./db");
     await db.delete(priceCache);
+  }
+  async clearPriceCacheForTickers(tickers: string[]): Promise<void> {
+    if (tickers.length === 0) return;
+    const { db } = await import("./db");
+    const { inArray } = await import("drizzle-orm");
+    await db.delete(priceCache).where(inArray(priceCache.ticker, tickers.map(t => t.toUpperCase())));
   }
 }
 
