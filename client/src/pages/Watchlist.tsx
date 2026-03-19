@@ -22,7 +22,7 @@ interface PriceData {
 
 // ── Sparkline ─────────────────────────────────────────────────────────────────
 
-function Sparkline({ data, positive }: { data: number[]; positive: boolean }) {
+function Sparkline({ data, ticker }: { data: number[]; ticker: string }) {
   const W = 88, H = 36;
   const min = Math.min(...data);
   const max = Math.max(...data);
@@ -30,10 +30,13 @@ function Sparkline({ data, positive }: { data: number[]; positive: boolean }) {
   const toX = (i: number) => (i / (data.length - 1)) * W;
   const toY = (v: number) => H - ((v - min) / range) * (H - 4) - 2;
 
+  // Color based on 30-day direction, not today's day change
+  const positive = data[data.length - 1] >= data[0];
   const pts = data.map((v, i) => `${toX(i)},${toY(v)}`).join(" ");
   const area = `M0,${H} ${data.map((v, i) => `L${toX(i)},${toY(v)}`).join(" ")} L${W},${H} Z`;
   const color = positive ? "hsl(145 63% 42%)" : "hsl(0 91% 71%)";
-  const gradId = `sg-${data[0].toFixed(0)}-${data[data.length - 1].toFixed(0)}`;
+  // Use ticker in gradId to prevent collision between stocks at same price
+  const gradId = `sg-${ticker}`;
 
   return (
     <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
@@ -202,7 +205,8 @@ function WatchlistCard({ item, pd, chartData, index, onEdit, onDelete }: Watchli
 
   const sparkline = chartData ?? null;
 
-  // Range bar data: prefer alert thresholds, fall back to 52w range
+  // Range bar: fill each side independently — alert threshold takes priority,
+  // 52w data fills in the missing half if only one alert is set.
   const rangeLow = item.alertLow ?? pd?.low52w;
   const rangeHigh = item.alertHigh ?? pd?.high52w;
   const showRange = rangeLow != null && rangeHigh != null && price != null && rangeHigh > rangeLow;
@@ -211,14 +215,14 @@ function WatchlistCard({ item, pd, chartData, index, onEdit, onDelete }: Watchli
     <div
       data-testid={`watchlist-card-${item.id}`}
       className={cn(
-        "group relative flex flex-col sm:grid sm:grid-cols-[minmax(160px,1.5fr)_minmax(100px,1fr)_auto_minmax(160px,1.5fr)] items-center gap-x-6 gap-y-3",
+        "wl-card-animate group relative flex flex-col sm:grid sm:grid-cols-[minmax(160px,1.5fr)_minmax(100px,1fr)_auto_minmax(160px,1.5fr)] items-center gap-x-6 gap-y-3",
         "bg-card/60 border rounded-xl px-5 py-4 transition-all duration-300",
         "hover:-translate-y-px hover:shadow-md hover:bg-card hover:border-border/80",
         alertTriggered
           ? "border-amber-500/40 border-l-2 border-l-amber-500"
           : "border-border/50",
       )}
-      style={{ animationDelay: `${index * 60}ms` }}
+      style={{ animationDelay: `${index * 70}ms` }}
     >
       {/* Col 1: Ticker info */}
       <div className="w-full sm:w-auto">
@@ -258,7 +262,7 @@ function WatchlistCard({ item, pd, chartData, index, onEdit, onDelete }: Watchli
       {/* Col 3: Sparkline */}
       <div className="hidden sm:flex justify-center">
         {sparkline ? (
-          <Sparkline data={sparkline} positive={positive} />
+          <Sparkline data={sparkline} ticker={item.ticker} />
         ) : (
           <div className="w-[88px] h-9 flex items-center justify-center">
             <Skeleton className="h-3 w-full" />
@@ -271,7 +275,7 @@ function WatchlistCard({ item, pd, chartData, index, onEdit, onDelete }: Watchli
         {showRange ? (
           <>
             <div className="text-[9px] uppercase tracking-widest text-muted-foreground/50 mb-0.5 font-medium">
-              {item.alertLow || item.alertHigh ? "Alert range" : "52w range"}
+              {item.alertLow && item.alertHigh ? "Alert range" : item.alertLow || item.alertHigh ? "Alert / 52w" : "52w range"}
             </div>
             <PriceRangeBar low={rangeLow!} high={rangeHigh!} current={price!} />
           </>
@@ -375,11 +379,21 @@ export default function Watchlist() {
     return (w.alertLow && p <= w.alertLow) || (w.alertHigh && p >= w.alertHigh);
   });
 
-  const totalWatchlistValue = watchlist.reduce((s, w) => s + (prices[w.ticker]?.price ?? 0), 0);
-  const hasAlerts = watchlist.filter(w => w.alertLow || w.alertHigh).length;
+  const alertCount = watchlist.filter(w => w.alertLow || w.alertHigh).length;
+  const gainersCount = watchlist.filter(w => (prices[w.ticker]?.changePercent ?? 0) > 0).length;
 
   return (
     <div className="p-6 space-y-6 max-w-5xl">
+      <style>{`
+        @keyframes wl-fade-up {
+          from { opacity: 0; transform: translateY(10px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .wl-card-animate {
+          opacity: 0;
+          animation: wl-fade-up 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+      `}</style>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -402,8 +416,8 @@ export default function Watchlist() {
         <div className="grid grid-cols-3 divide-x divide-border border border-border/50 rounded-xl overflow-hidden bg-muted/20">
           {[
             { label: "Watching", value: String(watchlist.length) },
-            { label: "Combined value", value: totalWatchlistValue > 0 ? `$${fmt(totalWatchlistValue)}` : "—" },
-            { label: "Alerts set", value: String(hasAlerts), accent: triggeredAlerts.length > 0 },
+            { label: "Up today", value: Object.keys(prices).length > 0 ? `${gainersCount} / ${watchlist.length}` : "—" },
+            { label: "Alerts set", value: String(alertCount), accent: triggeredAlerts.length > 0 },
           ].map(({ label, value, accent }) => (
             <div key={label} className="py-4 px-5 text-center">
               <div className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-medium mb-1.5">{label}</div>
