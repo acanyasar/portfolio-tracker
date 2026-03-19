@@ -38,10 +38,10 @@ export default function PerformanceRankingWidget() {
       ) : (
         <div className="space-y-2">
           {gainers.map(h => <Row key={h.id} h={h} />)}
-          {losers.length > 0 && gainers.some(g => g.pnlPercent >= 0) && losers.some(l => !gainers.includes(l)) && (
+          {losers.length > 0 && gainers.some(g => g.pnlPercent >= 0) && losers.some(l => !gainers.find(g => g.id === l.id)) && (
             <>
               <div className="border-t border-border/50 pt-1 mt-1" />
-              {losers.filter(l => !gainers.includes(l)).map(h => <Row key={h.id} h={h} />)}
+              {losers.filter(l => !gainers.find(g => g.id === l.id)).map(h => <Row key={h.id} h={h} />)}
             </>
           )}
         </div>

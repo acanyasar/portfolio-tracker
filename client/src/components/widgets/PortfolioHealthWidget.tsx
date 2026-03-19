@@ -23,6 +23,11 @@ export default function PortfolioHealthWidget() {
   const investedHoldings = data?.holdings.filter(h => !h.isCash && h.currentPrice > 0) ?? [];
   const investedValue = investedHoldings.reduce((s, h) => s + h.value, 0);
 
+  const sectorMap: Record<string, number> = {};
+  for (const h of investedHoldings) sectorMap[h.sector] = (sectorMap[h.sector] ?? 0) + h.value;
+  const sectorCount = Object.keys(sectorMap).length;
+  const avgWeight = investedHoldings.length > 0 ? 100 / investedHoldings.length : 0;
+
   const alerts: Alert[] = [];
 
   if (data && investedValue > 0) {
@@ -35,8 +40,6 @@ export default function PortfolioHealthWidget() {
     }
 
     // Sector concentration
-    const sectorMap: Record<string, number> = {};
-    for (const h of investedHoldings) sectorMap[h.sector] = (sectorMap[h.sector] ?? 0) + h.value;
     const topSector = Object.entries(sectorMap).sort((a, b) => b[1] - a[1])[0];
     if (topSector && (topSector[1] / investedValue) * 100 > 50) {
       alerts.push({ message: `${topSector[0]} sector is ${fmt((topSector[1] / investedValue) * 100, 0)}% of portfolio`, severity: "warning" });
@@ -48,14 +51,12 @@ export default function PortfolioHealthWidget() {
     }
 
     // Sector count
-    const sectorCount = Object.keys(sectorMap).length;
     if (sectorCount < 3) {
       alerts.push({ message: `Positions span only ${sectorCount} sector${sectorCount !== 1 ? "s" : ""}`, severity: "info" });
     }
   }
 
-  const sectorCount = new Set(investedHoldings.map(h => h.sector)).size;
-  const avgWeight = investedHoldings.length > 0 ? 100 / investedHoldings.length : 0;
+
 
   return (
     <WidgetCard title="Portfolio Health" isLoading={isLoading} skeletonRows={3}>

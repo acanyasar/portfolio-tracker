@@ -3,7 +3,7 @@ import { cn, fmt } from "@/lib/utils";
 import WidgetCard from "./WidgetCard";
 
 interface EnrichedHolding {
-  ticker: string; sector: string; value: number; isCash?: boolean;
+  ticker: string; sector: string; value: number; isCash?: boolean; currentPrice: number;
 }
 interface PortfolioSummary {
   holdings: EnrichedHolding[]; totalValue: number;
@@ -21,7 +21,7 @@ const SECTOR_TEXT = [
 export default function SectorAllocationWidget() {
   const { data, isLoading } = useQuery<PortfolioSummary>({ queryKey: ["/api/portfolio/summary"] });
 
-  const investedHoldings = data?.holdings.filter(h => !h.isCash) ?? [];
+  const investedHoldings = data?.holdings.filter(h => !h.isCash && h.currentPrice > 0) ?? [];
   const investedValue = investedHoldings.reduce((s, h) => s + h.value, 0);
 
   // Group by sector

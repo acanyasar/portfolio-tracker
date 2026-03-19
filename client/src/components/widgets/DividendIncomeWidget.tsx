@@ -6,6 +6,16 @@ import WidgetCard from "./WidgetCard";
 interface MonthData { month: string; amount: number; projected: boolean; }
 interface DividendSummary { months: MonthData[]; totalAnnual: number; avgMonthly: number; }
 
+function CustomTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-card border border-border rounded-lg p-2 text-xs shadow-lg">
+      <div className="font-semibold text-foreground">{label}</div>
+      <div className="text-primary font-mono font-semibold">${fmt(payload[0].value)}</div>
+    </div>
+  );
+}
+
 export default function DividendIncomeWidget() {
   const { data, isLoading } = useQuery<DividendSummary>({
     queryKey: ["/api/portfolio/dividend-summary"],
@@ -14,16 +24,6 @@ export default function DividendIncomeWidget() {
 
   const now = new Date();
   const currentMonthLabel = now.toLocaleDateString("en-US", { month: "short" });
-
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (!active || !payload?.length) return null;
-    return (
-      <div className="bg-card border border-border rounded-lg p-2 text-xs shadow-lg">
-        <div className="font-semibold text-foreground">{label}</div>
-        <div className="text-primary font-mono font-semibold">${fmt(payload[0].value)}</div>
-      </div>
-    );
-  };
 
   return (
     <WidgetCard title="Dividend Income" isLoading={isLoading} skeletonRows={4}>

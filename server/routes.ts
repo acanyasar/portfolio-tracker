@@ -786,7 +786,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         const interval = Math.round(12 / h.payoutFrequency);
         // How many intervals away is this month from the next payment month?
         const monthsDiff = (d.getFullYear() - nextDate.getFullYear()) * 12 + d.getMonth() - nextDate.getMonth();
-        if (monthsDiff % interval === 0) amount += h.nextPayment;
+        if (((monthsDiff % interval) + interval) % interval === 0) amount += h.nextPayment;
       }
       return { month: label, amount, projected: !isPast };
     });

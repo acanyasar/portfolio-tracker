@@ -21,6 +21,9 @@ export function useWidgetPreferences() {
       queryClient.setQueryData(["/api/user/preferences"], { ...(previous ?? defaultWidgetPreferences), ...updates });
       return { previous };
     },
+    onSuccess: (data) => {
+      queryClient.setQueryData(["/api/user/preferences"], data);
+    },
     onError: (_err, _vars, ctx) => {
       if (ctx?.previous) queryClient.setQueryData(["/api/user/preferences"], ctx.previous);
     },
