@@ -113,9 +113,9 @@ export default function Analytics() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-5">
+      <div className="p-4 sm:p-6 space-y-5">
         <Skeleton className="h-6 w-40" />
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-64" />)}
         </div>
       </div>
@@ -124,18 +124,15 @@ export default function Analytics() {
 
   if (!data) return null;
 
-  // Holdings with valid prices only - exclude CASH from market-tracking charts
   const priced = data.holdings.filter(h => h.currentPrice > 0 && !h.isCash);
   const totalValue = priced.reduce((s, h) => s + h.value, 0);
   const cashValue = data.cashValue ?? 0;
 
-  // Allocation by ticker (include cash as a separate slice)
   const allocationData = [
     ...priced.map(h => ({ name: h.ticker, value: h.value, pct: (totalValue + cashValue) > 0 ? (h.value / (totalValue + cashValue)) * 100 : 0 })),
     ...(cashValue > 0 ? [{ name: "CASH", value: cashValue, pct: (totalValue + cashValue) > 0 ? (cashValue / (totalValue + cashValue)) * 100 : 0 }] : []),
   ].sort((a, b) => b.value - a.value);
 
-  // Sector breakdown (include cash sector)
   const sectorMap: Record<string, number> = {};
   for (const h of priced) {
     sectorMap[h.sector] = (sectorMap[h.sector] ?? 0) + h.value;
@@ -146,12 +143,10 @@ export default function Analytics() {
     .map(([name, value]) => ({ name, value, pct: totalWithCash > 0 ? (value / totalWithCash) * 100 : 0 }))
     .sort((a, b) => b.value - a.value);
 
-  // P&L by position (sorted by absolute P&L) - exclude CASH
   const pnlData = priced
     .map(h => ({ ticker: h.ticker, pnl: h.pnl, pnlPct: h.pnlPercent }))
     .sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl));
 
-  // Cost vs Value comparison - exclude CASH
   const cvData = data.holdings
     .filter(h => !h.isCash)
     .sort((a, b) => b.avgCost * b.shares - a.avgCost * a.shares)
@@ -162,8 +157,10 @@ export default function Analytics() {
       Value: h.currentPrice > 0 ? Math.round(h.value) : 0,
     }));
 
+  const sortedPriced = [...priced].sort((a, b) => b.pnl - a.pnl);
+
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-4 sm:p-6 space-y-5">
       <div>
         <h1 className="text-base font-semibold text-foreground">Analytics</h1>
         <p className="text-xs text-muted-foreground mt-0.5">Portfolio breakdown · {priced.length} priced positions</p>
@@ -176,26 +173,16 @@ export default function Analytics() {
             <CardTitle className="text-sm font-semibold">Allocation by Position</CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4">
-            <div className="flex gap-4">
-              <ResponsiveContainer width="50%" height={220}>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <ResponsiveContainer width="100%" height={200} className="sm:w-1/2 sm:flex-none" style={{ width: undefined }}>
                 <PieChart>
-                  <Pie
-                    data={allocationData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={90}
-                    dataKey="value"
-                    paddingAngle={2}
-                  >
-                    {allocationData.map((_, i) => (
-                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                    ))}
+                  <Pie data={allocationData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" paddingAngle={2}>
+                    {allocationData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Pie>
                   <Tooltip content={<PieTooltip />} />
                 </PieChart>
               </ResponsiveContainer>
-              <div className="flex-1 space-y-1.5 overflow-y-auto max-h-[220px] scrollbar-thin">
+              <div className="flex-1 space-y-1.5 overflow-y-auto max-h-[200px] scrollbar-thin">
                 {allocationData.map((d, i) => (
                   <div key={d.name} className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1.5">
@@ -216,26 +203,16 @@ export default function Analytics() {
             <CardTitle className="text-sm font-semibold">Sector Breakdown</CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4">
-            <div className="flex gap-4">
-              <ResponsiveContainer width="50%" height={220}>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <ResponsiveContainer width="100%" height={200} className="sm:w-1/2 sm:flex-none" style={{ width: undefined }}>
                 <PieChart>
-                  <Pie
-                    data={sectorData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={90}
-                    dataKey="value"
-                    paddingAngle={2}
-                  >
-                    {sectorData.map((_, i) => (
-                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                    ))}
+                  <Pie data={sectorData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" paddingAngle={2}>
+                    {sectorData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Pie>
                   <Tooltip content={<PieTooltip />} />
                 </PieChart>
               </ResponsiveContainer>
-              <div className="flex-1 space-y-1.5 overflow-y-auto max-h-[220px] scrollbar-thin">
+              <div className="flex-1 space-y-1.5 overflow-y-auto max-h-[200px] scrollbar-thin">
                 {sectorData.map((d, i) => (
                   <div key={d.name} className="flex items-center justify-between text-xs gap-1">
                     <div className="flex items-center gap-1.5 min-w-0">
@@ -261,14 +238,9 @@ export default function Analytics() {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                 <XAxis dataKey="ticker" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
                 <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickFormatter={v => v >= 1000 ? `$${(v/1000).toFixed(1)}k` : `$${v}`} />
-                <Tooltip
-                  content={<CustomTooltip />}
-                  formatter={(v: number) => [`$${fmt(v)}`, "P&L"]}
-                />
+                <Tooltip content={<CustomTooltip />} formatter={(v: number) => [`$${fmt(v)}`, "P&L"]} />
                 <Bar dataKey="pnl" name="P&L" radius={[3, 3, 0, 0]}>
-                  {pnlData.map((d, i) => (
-                    <Cell key={i} fill={d.pnl >= 0 ? "hsl(145 63% 42%)" : "hsl(0 72% 51%)"} />
-                  ))}
+                  {pnlData.map((d, i) => <Cell key={i} fill={d.pnl >= 0 ? "hsl(145 63% 42%)" : "hsl(0 72% 51%)"} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -299,12 +271,12 @@ export default function Analytics() {
       {/* Benchmark Comparison Chart */}
       <Card>
         <CardHeader className="pb-1 pt-4 px-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between">
             <div>
               <CardTitle className="text-sm font-semibold">Portfolio vs Benchmarks</CardTitle>
               <p className="text-xs text-muted-foreground mt-0.5">Indexed to 100 at start of period · weekly data</p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
               {/* Mode toggle */}
               <div className="flex items-center gap-0.5 bg-accent rounded-md p-0.5">
                 {(["hypothetical", "actual"] as const).map(m => (
@@ -331,7 +303,7 @@ export default function Analytics() {
                     data-testid={`btn-range-${opt.value}`}
                     onClick={() => setBenchmarkRange(opt.value)}
                     className={cn(
-                      "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                      "px-2 py-1 rounded text-xs font-medium transition-colors",
                       benchmarkRange === opt.value
                         ? "bg-primary text-primary-foreground"
                         : "text-muted-foreground hover:text-foreground hover:bg-accent"
@@ -352,7 +324,6 @@ export default function Analytics() {
               Loading chart data…
             </div>
           ) : (() => {
-            // Calculate final return vs 100 (start)
             const last = histData.series[histData.series.length - 1];
             const portReturn = last ? (last.portfolio - 100).toFixed(1) : "0.0";
             const spReturn = last ? (last.sp500 - 100).toFixed(1) : "0.0";
@@ -379,8 +350,7 @@ export default function Analytics() {
             };
             return (
               <>
-                {/* Legend + returns */}
-                <div className="flex items-center gap-4 px-3 mb-3">
+                <div className="flex items-center gap-3 px-3 mb-3 flex-wrap">
                   <div className="flex items-center gap-1.5">
                     <div className="w-3 h-3 rounded-full bg-primary" />
                     <span className="text-xs font-semibold">My Portfolio</span>
@@ -403,7 +373,7 @@ export default function Analytics() {
                     </span>
                   </div>
                 </div>
-                <ResponsiveContainer width="100%" height={280}>
+                <ResponsiveContainer width="100%" height={260}>
                   <LineChart data={histData.series} margin={{ top: 4, right: 12, left: -10, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                     <XAxis
@@ -422,35 +392,9 @@ export default function Analytics() {
                     />
                     <Tooltip content={<ChartTooltip />} />
                     <ReferenceLine y={100} stroke="hsl(var(--border))" strokeDasharray="4 4" />
-                    <Line
-                      type="monotone"
-                      dataKey="portfolio"
-                      name="My Portfolio"
-                      stroke="hsl(210 100% 56%)"
-                      strokeWidth={2.5}
-                      dot={false}
-                      activeDot={{ r: 4 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="sp500"
-                      name="S&P 500"
-                      stroke="hsl(35 95% 58%)"
-                      strokeWidth={1.5}
-                      dot={false}
-                      strokeDasharray="5 3"
-                      activeDot={{ r: 3 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="nasdaq"
-                      name="NASDAQ"
-                      stroke="hsl(260 70% 60%)"
-                      strokeWidth={1.5}
-                      dot={false}
-                      strokeDasharray="3 3"
-                      activeDot={{ r: 3 }}
-                    />
+                    <Line type="monotone" dataKey="portfolio" name="My Portfolio" stroke="hsl(210 100% 56%)" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+                    <Line type="monotone" dataKey="sp500" name="S&P 500" stroke="hsl(35 95% 58%)" strokeWidth={1.5} dot={false} strokeDasharray="5 3" activeDot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="nasdaq" name="NASDAQ" stroke="hsl(260 70% 60%)" strokeWidth={1.5} dot={false} strokeDasharray="3 3" activeDot={{ r: 3 }} />
                   </LineChart>
                 </ResponsiveContainer>
               </>
@@ -465,38 +409,68 @@ export default function Analytics() {
           <CardTitle className="text-sm font-semibold">Position Performance Detail</CardTitle>
         </CardHeader>
         <CardContent className="px-0 pb-0">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="px-4 py-2 text-left text-muted-foreground font-medium">Ticker</th>
-                <th className="px-4 py-2 text-left text-muted-foreground font-medium">Sector</th>
-                <th className="px-4 py-2 text-right text-muted-foreground font-medium">Cost Basis</th>
-                <th className="px-4 py-2 text-right text-muted-foreground font-medium">Current Value</th>
-                <th className="px-4 py-2 text-right text-muted-foreground font-medium">P&L ($)</th>
-                <th className="px-4 py-2 text-right text-muted-foreground font-medium">P&L (%)</th>
-                <th className="px-4 py-2 text-right text-muted-foreground font-medium">Weight</th>
-              </tr>
-            </thead>
-            <tbody>
-              {priced.sort((a, b) => b.pnl - a.pnl).map(h => (
-                <tr key={h.id} className="border-b border-border/50 hover:bg-accent/50 transition-colors">
-                  <td className="px-4 py-2.5 font-semibold text-foreground">{h.ticker}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{h.sector}</td>
-                  <td className="px-4 py-2.5 text-right font-mono-nums">${fmt(h.cost)}</td>
-                  <td className="px-4 py-2.5 text-right font-mono-nums">${fmt(h.value)}</td>
-                  <td className={cn("px-4 py-2.5 text-right font-mono-nums font-semibold", h.pnl >= 0 ? "text-up" : "text-down")}>
-                    {h.pnl >= 0 ? "+" : ""}${fmt(h.pnl)}
-                  </td>
-                  <td className={cn("px-4 py-2.5 text-right font-mono-nums font-semibold", h.pnlPercent >= 0 ? "text-up" : "text-down")}>
+          {/* Mobile card list */}
+          <div className="md:hidden divide-y divide-border/50">
+            {sortedPriced.map(h => (
+              <div key={h.id} className="px-4 py-3 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-semibold text-foreground text-sm">{h.ticker}</span>
+                    <span className="text-xs text-muted-foreground ml-2">{h.sector}</span>
+                  </div>
+                  <div className={cn("text-sm font-bold font-mono-nums", h.pnl >= 0 ? "text-up" : "text-down")}>
+                    {h.pnl >= 0 ? "+" : ""}${fmt(Math.abs(h.pnl))}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Cost <span className="font-mono-nums text-foreground">${fmt(h.cost)}</span></span>
+                  <span>Value <span className="font-mono-nums text-foreground">${fmt(h.value)}</span></span>
+                  <span className={cn("font-semibold font-mono-nums", h.pnlPercent >= 0 ? "text-up" : "text-down")}>
                     {h.pnlPercent >= 0 ? "+" : ""}{fmt(h.pnlPercent)}%
-                  </td>
-                  <td className="px-4 py-2.5 text-right font-mono-nums text-muted-foreground">
+                  </span>
+                  <span className="text-muted-foreground font-mono-nums">
                     {totalWithCash > 0 ? fmt((h.value / totalWithCash) * 100, 1) : "0.0"}%
-                  </td>
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="px-4 py-2 text-left text-muted-foreground font-medium">Ticker</th>
+                  <th className="px-4 py-2 text-left text-muted-foreground font-medium">Sector</th>
+                  <th className="px-4 py-2 text-right text-muted-foreground font-medium">Cost Basis</th>
+                  <th className="px-4 py-2 text-right text-muted-foreground font-medium">Current Value</th>
+                  <th className="px-4 py-2 text-right text-muted-foreground font-medium">P&L ($)</th>
+                  <th className="px-4 py-2 text-right text-muted-foreground font-medium">P&L (%)</th>
+                  <th className="px-4 py-2 text-right text-muted-foreground font-medium">Weight</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {sortedPriced.map(h => (
+                  <tr key={h.id} className="border-b border-border/50 hover:bg-accent/50 transition-colors">
+                    <td className="px-4 py-2.5 font-semibold text-foreground">{h.ticker}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground">{h.sector}</td>
+                    <td className="px-4 py-2.5 text-right font-mono-nums">${fmt(h.cost)}</td>
+                    <td className="px-4 py-2.5 text-right font-mono-nums">${fmt(h.value)}</td>
+                    <td className={cn("px-4 py-2.5 text-right font-mono-nums font-semibold", h.pnl >= 0 ? "text-up" : "text-down")}>
+                      {h.pnl >= 0 ? "+" : ""}${fmt(h.pnl)}
+                    </td>
+                    <td className={cn("px-4 py-2.5 text-right font-mono-nums font-semibold", h.pnlPercent >= 0 ? "text-up" : "text-down")}>
+                      {h.pnlPercent >= 0 ? "+" : ""}{fmt(h.pnlPercent)}%
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-mono-nums text-muted-foreground">
+                      {totalWithCash > 0 ? fmt((h.value / totalWithCash) * 100, 1) : "0.0"}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </CardContent>
       </Card>
     </div>

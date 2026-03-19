@@ -42,7 +42,7 @@ function fmtDate(iso: string | null) {
 
 function freqLabel(freq: number) {
   if (freq === 1) return "Annual";
-  if (freq === 2) return "Semi-annual";
+  if (freq === 2) return "Semi-ann";
   if (freq === 4) return "Quarterly";
   if (freq === 12) return "Monthly";
   return "Quarterly";
@@ -56,7 +56,6 @@ function daysUntil(iso: string | null): number | null {
   return diff;
 }
 
-// Build a 12-month calendar of expected income events
 function buildCalendar(holdings: DividendHolding[]) {
   const months: Record<string, number> = {};
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -66,9 +65,7 @@ function buildCalendar(holdings: DividendHolding[]) {
   for (const h of holdings) {
     if (h.annualIncome <= 0) continue;
     const perPayment = h.nextPayment > 0 ? h.nextPayment : h.annualIncome / h.payoutFrequency;
-    // Distribute payments evenly across months based on frequency
     const interval = Math.round(12 / h.payoutFrequency);
-    // Try to anchor to the next payment month if available
     let startMonth = 0;
     if (h.nextPaymentDate) {
       startMonth = new Date(h.nextPaymentDate + "T12:00:00Z").getMonth();
@@ -97,9 +94,9 @@ export default function Dividends() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-5">
+      <div className="p-4 sm:p-6 space-y-5">
         <Skeleton className="h-6 w-48" />
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-24" />)}
         </div>
         <Skeleton className="h-64" />
@@ -113,17 +110,14 @@ export default function Dividends() {
   const payingHoldings = data.holdings.filter(h => h.annualIncome > 0);
   const nonPaying = data.holdings.filter(h => h.annualIncome === 0);
 
-  // Next upcoming dividend across all holdings
   const upcoming = payingHoldings
     .filter(h => h.nextPaymentDate)
     .sort((a, b) => (a.nextPaymentDate ?? "").localeCompare(b.nextPaymentDate ?? ""));
   const nextUp = upcoming[0];
   const nextUpDays = nextUp ? daysUntil(nextUp.nextPaymentDate) : null;
 
-  // Monthly income (next 12m)
   const monthlyTotal = data.totalAnnualIncome / 12;
 
-  // Sorted holdings
   const sorted = [...payingHoldings].sort((a, b) => {
     if (sortBy === "income") return b.annualIncome - a.annualIncome;
     if (sortBy === "yield") return b.dividendYield - a.dividendYield;
@@ -143,7 +137,7 @@ export default function Dividends() {
   };
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-4 sm:p-6 space-y-5">
       {/* Header */}
       <div>
         <h1 className="text-base font-semibold text-foreground">Dividend Income</h1>
@@ -159,9 +153,7 @@ export default function Dividends() {
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Annual Income</p>
-                <p className="text-xl font-bold font-mono-nums text-foreground mt-1">
-                  ${fmt(data.totalAnnualIncome)}
-                </p>
+                <p className="text-xl font-bold font-mono-nums text-foreground mt-1">${fmt(data.totalAnnualIncome)}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">${fmt(monthlyTotal)}/mo avg</p>
               </div>
               <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
@@ -197,9 +189,7 @@ export default function Dividends() {
                 <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Next Payment</p>
                 {nextUp ? (
                   <>
-                    <p className="text-xl font-bold font-mono-nums text-foreground mt-1">
-                      {nextUp.ticker}
-                    </p>
+                    <p className="text-xl font-bold font-mono-nums text-foreground mt-1">{nextUp.ticker}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {fmtDate(nextUp.nextPaymentDate)}
                       {nextUpDays !== null && nextUpDays >= 0 && (
@@ -243,13 +233,7 @@ export default function Dividends() {
                   const now = new Date();
                   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
                   const isCurrentMonth = months[now.getMonth()] === d.month;
-                  return (
-                    <Cell
-                      key={i}
-                      fill={isCurrentMonth ? "hsl(145 63% 42%)" : "hsl(210 100% 56%)"}
-                      opacity={d.income > 0 ? 1 : 0.25}
-                    />
-                  );
+                  return <Cell key={i} fill={isCurrentMonth ? "hsl(145 63% 42%)" : "hsl(210 100% 56%)"} opacity={d.income > 0 ? 1 : 0.25} />;
                 })}
               </Bar>
             </BarChart>
@@ -260,7 +244,7 @@ export default function Dividends() {
       {/* Holdings Table */}
       <Card>
         <CardHeader className="pb-2 pt-4 px-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <CardTitle className="text-sm font-semibold">Dividend Holdings</CardTitle>
             <div className="flex items-center gap-1">
               {(["income", "yield", "date"] as const).map(s => (
@@ -269,103 +253,145 @@ export default function Dividends() {
                   data-testid={`btn-sort-${s}`}
                   onClick={() => setSortBy(s)}
                   className={cn(
-                    "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                    "px-2 py-1 rounded text-xs font-medium transition-colors whitespace-nowrap",
                     sortBy === s
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:text-foreground hover:bg-accent"
                   )}
                 >
-                  {s === "income" ? "By Income" : s === "yield" ? "By Yield" : "By Date"}
+                  {s === "income" ? "Income" : s === "yield" ? "Yield" : "Date"}
                 </button>
               ))}
             </div>
           </div>
         </CardHeader>
         <CardContent className="px-0 pb-0">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="px-4 py-2 text-left text-muted-foreground font-medium">Ticker</th>
-                <th className="px-4 py-2 text-right text-muted-foreground font-medium">Shares</th>
-                <th className="px-4 py-2 text-right text-muted-foreground font-medium">Annual Rate</th>
-                <th className="px-4 py-2 text-right text-muted-foreground font-medium">Yield</th>
-                <th className="px-4 py-2 text-center text-muted-foreground font-medium">Frequency</th>
-                <th className="px-4 py-2 text-right text-muted-foreground font-medium">Next Payment</th>
-                <th className="px-4 py-2 text-right text-muted-foreground font-medium">Next Amount</th>
-                <th className="px-4 py-2 text-right text-muted-foreground font-medium">Annual Income</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map(h => {
-                const days = daysUntil(h.nextPaymentDate);
-                return (
-                  <tr key={h.id} className="border-b border-border/50 hover:bg-accent/50 transition-colors">
-                    <td className="px-4 py-2.5">
-                      <div className="font-semibold text-foreground">{h.ticker}</div>
-                      <div className="text-muted-foreground text-[10px] truncate max-w-[120px]">{h.name}</div>
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-mono-nums text-muted-foreground">
-                      {h.shares.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-mono-nums">
-                      ${fmt(h.dividendRate, 3)}
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-mono-nums text-up font-semibold">
-                      {fmt(h.dividendYield * 100, 2)}%
-                    </td>
-                    <td className="px-4 py-2.5 text-center">
-                      <Badge
-                        variant="secondary"
-                        className="text-[10px] px-1.5"
-                        style={{ color: FREQ_COLORS[h.payoutFrequency] }}
-                      >
+          {/* Mobile card list */}
+          <div className="md:hidden divide-y divide-border/50">
+            {sorted.map(h => {
+              const days = daysUntil(h.nextPaymentDate);
+              return (
+                <div key={h.id} className="px-4 py-3 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="min-w-0">
+                      <span className="font-semibold text-foreground text-sm">{h.ticker}</span>
+                      <span className="text-xs text-muted-foreground ml-1.5">{h.shares.toLocaleString()} shares</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge variant="secondary" className="text-[10px] px-1.5" style={{ color: FREQ_COLORS[h.payoutFrequency] }}>
                         {freqLabel(h.payoutFrequency)}
                       </Badge>
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-mono-nums text-muted-foreground">
+                      <span className="text-sm font-bold text-up font-mono-nums">${fmt(h.annualIncome)}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground gap-2">
+                    <span>Yield <span className="font-mono-nums text-up font-semibold">{fmt(h.dividendYield * 100, 2)}%</span></span>
+                    <span>Rate <span className="font-mono-nums text-foreground">${fmt(h.dividendRate, 3)}</span></span>
+                    <div className="text-right">
                       <div>{fmtDate(h.nextPaymentDate)}</div>
                       {days !== null && days >= 0 && days <= 60 && (
                         <div className="text-[10px] text-primary font-semibold">in {days}d</div>
                       )}
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-mono-nums font-semibold text-foreground">
-                      {h.nextPayment > 0 ? `$${fmt(h.nextPayment)}` : "—"}
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-mono-nums font-semibold text-up">
-                      {h.annualIncome > 0 ? `$${fmt(h.annualIncome)}` : "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-              {nonPaying.length > 0 && (
-                <>
-                  <tr className="border-b border-border/30">
-                    <td colSpan={8} className="px-4 py-1.5 text-[10px] text-muted-foreground/60 uppercase tracking-wide bg-accent/30">
-                      Non-dividend paying
-                    </td>
-                  </tr>
-                  {nonPaying.map(h => (
-                    <tr key={h.id} className="border-b border-border/30 opacity-50">
-                      <td className="px-4 py-2 font-semibold text-foreground">{h.ticker}</td>
-                      <td className="px-4 py-2 text-right font-mono-nums text-muted-foreground">{h.shares}</td>
-                      <td colSpan={6} className="px-4 py-2 text-muted-foreground text-center">No dividend</td>
-                    </tr>
-                  ))}
-                </>
-              )}
-            </tbody>
-            {/* Total row */}
-            {payingHoldings.length > 0 && (
-              <tfoot>
-                <tr className="border-t-2 border-border bg-accent/30">
-                  <td className="px-4 py-2.5 font-semibold text-foreground" colSpan={7}>Total Annual Income</td>
-                  <td className="px-4 py-2.5 text-right font-mono-nums font-bold text-up text-sm">
-                    ${fmt(data.totalAnnualIncome)}
-                  </td>
-                </tr>
-              </tfoot>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {nonPaying.length > 0 && (
+              <>
+                <div className="px-4 py-1.5 text-[10px] text-muted-foreground/60 uppercase tracking-wide bg-accent/30">
+                  Non-dividend paying
+                </div>
+                {nonPaying.map(h => (
+                  <div key={h.id} className="px-4 py-2.5 flex items-center justify-between opacity-50">
+                    <span className="font-semibold text-foreground text-sm">{h.ticker}</span>
+                    <span className="text-xs text-muted-foreground">No dividend</span>
+                  </div>
+                ))}
+              </>
             )}
-          </table>
+            {payingHoldings.length > 0 && (
+              <div className="px-4 py-3 flex items-center justify-between border-t-2 border-border bg-accent/30">
+                <span className="text-sm font-semibold text-foreground">Total Annual Income</span>
+                <span className="text-sm font-bold text-up font-mono-nums">${fmt(data.totalAnnualIncome)}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="px-4 py-2 text-left text-muted-foreground font-medium">Ticker</th>
+                  <th className="px-4 py-2 text-right text-muted-foreground font-medium">Shares</th>
+                  <th className="px-4 py-2 text-right text-muted-foreground font-medium">Annual Rate</th>
+                  <th className="px-4 py-2 text-right text-muted-foreground font-medium">Yield</th>
+                  <th className="px-4 py-2 text-center text-muted-foreground font-medium">Frequency</th>
+                  <th className="px-4 py-2 text-right text-muted-foreground font-medium">Next Payment</th>
+                  <th className="px-4 py-2 text-right text-muted-foreground font-medium">Next Amount</th>
+                  <th className="px-4 py-2 text-right text-muted-foreground font-medium">Annual Income</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map(h => {
+                  const days = daysUntil(h.nextPaymentDate);
+                  return (
+                    <tr key={h.id} className="border-b border-border/50 hover:bg-accent/50 transition-colors">
+                      <td className="px-4 py-2.5">
+                        <div className="font-semibold text-foreground">{h.ticker}</div>
+                        <div className="text-muted-foreground text-[10px] truncate max-w-[120px]">{h.name}</div>
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono-nums text-muted-foreground">{h.shares.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right font-mono-nums">${fmt(h.dividendRate, 3)}</td>
+                      <td className="px-4 py-2.5 text-right font-mono-nums text-up font-semibold">{fmt(h.dividendYield * 100, 2)}%</td>
+                      <td className="px-4 py-2.5 text-center">
+                        <Badge variant="secondary" className="text-[10px] px-1.5" style={{ color: FREQ_COLORS[h.payoutFrequency] }}>
+                          {freqLabel(h.payoutFrequency)}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono-nums text-muted-foreground">
+                        <div>{fmtDate(h.nextPaymentDate)}</div>
+                        {days !== null && days >= 0 && days <= 60 && (
+                          <div className="text-[10px] text-primary font-semibold">in {days}d</div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono-nums font-semibold text-foreground">
+                        {h.nextPayment > 0 ? `$${fmt(h.nextPayment)}` : "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono-nums font-semibold text-up">
+                        {h.annualIncome > 0 ? `$${fmt(h.annualIncome)}` : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {nonPaying.length > 0 && (
+                  <>
+                    <tr className="border-b border-border/30">
+                      <td colSpan={8} className="px-4 py-1.5 text-[10px] text-muted-foreground/60 uppercase tracking-wide bg-accent/30">
+                        Non-dividend paying
+                      </td>
+                    </tr>
+                    {nonPaying.map(h => (
+                      <tr key={h.id} className="border-b border-border/30 opacity-50">
+                        <td className="px-4 py-2 font-semibold text-foreground">{h.ticker}</td>
+                        <td className="px-4 py-2 text-right font-mono-nums text-muted-foreground">{h.shares}</td>
+                        <td colSpan={6} className="px-4 py-2 text-muted-foreground text-center">No dividend</td>
+                      </tr>
+                    ))}
+                  </>
+                )}
+              </tbody>
+              {payingHoldings.length > 0 && (
+                <tfoot>
+                  <tr className="border-t-2 border-border bg-accent/30">
+                    <td className="px-4 py-2.5 font-semibold text-foreground" colSpan={7}>Total Annual Income</td>
+                    <td className="px-4 py-2.5 text-right font-mono-nums font-bold text-up text-sm">${fmt(data.totalAnnualIncome)}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
         </CardContent>
       </Card>
     </div>
