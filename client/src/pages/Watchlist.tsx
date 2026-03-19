@@ -22,16 +22,6 @@ interface PriceData {
 
 // ── Sparkline ─────────────────────────────────────────────────────────────────
 
-function generateSparkline(currentPrice: number, changePercent: number): number[] {
-  const steps = 10;
-  const startPrice = currentPrice / (1 + changePercent / 100);
-  return Array.from({ length: steps }, (_, i) => {
-    const t = i / (steps - 1);
-    const noise = (Math.sin(i * 2.5) * 0.3 + Math.cos(i * 1.7) * 0.2) * currentPrice * 0.008;
-    return startPrice + (currentPrice - startPrice) * t + noise;
-  });
-}
-
 function Sparkline({ data, positive }: { data: number[]; positive: boolean }) {
   const W = 88, H = 36;
   const min = Math.min(...data);
@@ -194,12 +184,13 @@ function WatchlistForm({ initial, onSubmit, onCancel, loading }: WatchlistFormPr
 interface WatchlistCardProps {
   item: WatchlistItem;
   pd?: PriceData;
+  chartData?: number[];
   index: number;
   onEdit: () => void;
   onDelete: () => void;
 }
 
-function WatchlistCard({ item, pd, index, onEdit, onDelete }: WatchlistCardProps) {
+function WatchlistCard({ item, pd, chartData, index, onEdit, onDelete }: WatchlistCardProps) {
   const price = pd?.price;
   const changePercent = pd?.changePercent ?? 0;
   const positive = changePercent >= 0;
@@ -209,7 +200,7 @@ function WatchlistCard({ item, pd, index, onEdit, onDelete }: WatchlistCardProps
   const alertTriggered = atLow || atHigh;
   const hasAlert = !!(item.alertLow || item.alertHigh);
 
-  const sparkline = price ? generateSparkline(price, changePercent) : null;
+  const sparkline = chartData ?? null;
 
   // Range bar data: prefer alert thresholds, fall back to 52w range
   const rangeLow = item.alertLow ?? pd?.low52w;
@@ -339,6 +330,7 @@ export default function Watchlist() {
   const { data: watchlist = [], isLoading } = useQuery<WatchlistItem[]>({ queryKey: ["/api/watchlist"] });
 
   const tickers = watchlist.map(w => w.ticker);
+
   const { data: prices = {} } = useQuery<Record<string, PriceData>>({
     queryKey: ["/api/prices/batch", tickers.join(",")],
     queryFn: () => tickers.length > 0
@@ -346,6 +338,15 @@ export default function Watchlist() {
       : Promise.resolve({}),
     enabled: tickers.length > 0,
     refetchInterval: 60_000,
+  });
+
+  const { data: charts = {} } = useQuery<Record<string, number[]>>({
+    queryKey: ["/api/prices/charts", tickers.join(",")],
+    queryFn: () => tickers.length > 0
+      ? fetch("/api/prices/charts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickers }), credentials: "include" }).then(r => r.json())
+      : Promise.resolve({}),
+    enabled: tickers.length > 0,
+    staleTime: 10 * 60_000, // chart data is stable, refresh every 10 min
   });
 
   const addMutation = useMutation({
@@ -435,6 +436,7 @@ export default function Watchlist() {
                   key={item.id}
                   item={item}
                   pd={prices[item.ticker]}
+                  chartData={charts[item.ticker]}
                   index={i}
                   onEdit={() => setEditId(item.id)}
                   onDelete={() => setDeleteId(item.id)}
