@@ -1,0 +1,143 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Finance dashboard palette — dark slate, electric blue accent */
+    --background: 222 20% 8%;
+    --foreground: 210 15% 88%;
+
+    --card: 222 18% 11%;
+    --card-foreground: 210 15% 88%;
+
+    --popover: 222 18% 11%;
+    --popover-foreground: 210 15% 88%;
+
+    --primary: 210 100% 56%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 222 15% 16%;
+    --secondary-foreground: 210 15% 88%;
+
+    --muted: 222 15% 16%;
+    --muted-foreground: 210 10% 50%;
+
+    --accent: 222 15% 18%;
+    --accent-foreground: 210 15% 88%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 222 15% 18%;
+    --input: 222 15% 18%;
+    --ring: 210 100% 56%;
+
+    --radius: 0.5rem;
+
+    /* Custom semantic tokens */
+    --color-up: 145 63% 42%;
+    --color-up-fg: 145 50% 88%;
+    --color-down: 0 72% 51%;
+    --color-down-fg: 0 60% 88%;
+    --color-neutral: 210 10% 50%;
+
+    --font-body: 'Inter', 'Helvetica Neue', sans-serif;
+    --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+  }
+
+  /* Light mode variant */
+  .light {
+    --background: 210 20% 97%;
+    --foreground: 222 20% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 20% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 20% 12%;
+    --primary: 210 100% 40%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 15% 92%;
+    --secondary-foreground: 222 20% 12%;
+    --muted: 210 15% 93%;
+    --muted-foreground: 222 10% 45%;
+    --accent: 210 15% 90%;
+    --accent-foreground: 222 20% 12%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 210 15% 85%;
+    --input: 210 15% 85%;
+    --ring: 210 100% 40%;
+    --color-up: 145 50% 35%;
+    --color-up-fg: 145 50% 12%;
+    --color-down: 0 65% 45%;
+    --color-down-fg: 0 50% 12%;
+    --color-neutral: 210 10% 45%;
+  }
+
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+}
+
+@layer utilities {
+  .font-mono-nums {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums lining-nums;
+    letter-spacing: -0.01em;
+  }
+
+  .text-up {
+    color: hsl(var(--color-up));
+  }
+
+  .text-down {
+    color: hsl(var(--color-down));
+  }
+
+  .text-neutral {
+    color: hsl(var(--color-neutral));
+  }
+
+  .bg-up-subtle {
+    background-color: hsl(145 63% 42% / 0.12);
+  }
+
+  .bg-down-subtle {
+    background-color: hsl(0 72% 51% / 0.12);
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 2px;
+  }
+}
