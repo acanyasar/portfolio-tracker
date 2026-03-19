@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
-  Plus, Pencil, Trash2, Upload, ChevronDown, ChevronUp, Loader2, CheckCircle2, Banknote
+  Plus, Pencil, Trash2, Upload, Loader2, CheckCircle2, Banknote
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { cn, fmt } from "@/lib/utils";
 import type { Holding, InsertHolding } from "@shared/schema";
+import { useEnrichedHoldings } from "@/hooks/useEnrichedHoldings";
+import SortableTableHeader, { type ColumnDef } from "@/components/SortableTableHeader";
 
 const SECTORS = [
   "Semiconductors", "Software/AI", "Cloud/AI", "Cloud/E-commerce",
@@ -22,6 +24,26 @@ const SECTORS = [
 ];
 
 const today = () => new Date().toISOString().split("T")[0];
+
+type HoldingsSortField =
+  | "ticker" | "sector" | "shares" | "avgCost" | "currentPrice"
+  | "value" | "pnl" | "pnlPercent" | "priceChangePercent" | "weight" | "purchaseDate";
+
+const COLUMNS: ColumnDef[] = [
+  { key: "ticker",             label: "Ticker",    align: "left" },
+  { key: "sector",             label: "Sector",    align: "left" },
+  { key: "shares",             label: "Shares",    align: "right" },
+  { key: "avgCost",            label: "Avg Cost",  align: "right" },
+  { key: "currentPrice",       label: "Price",     align: "right" },
+  { key: "value",              label: "Value",     align: "right" },
+  { key: "pnl",                label: "P&L $",     align: "right" },
+  { key: "pnlPercent",         label: "P&L %",     align: "right" },
+  { key: "priceChangePercent", label: "Day",       align: "right" },
+  { key: "weight",             label: "Weight",    align: "right" },
+  { key: "purchaseDate",       label: "Purchased", align: "left",  className: "hidden xl:table-cell" },
+  { key: "notes",              label: "Notes",     align: "left",  sortable: false, className: "hidden xl:table-cell" },
+  { key: "actions",            label: "",          align: "right", sortable: false },
+];
 
 const emptyForm = (): InsertHolding => ({
   ticker: "", name: "", shares: 0, avgCost: 0, sector: "Other", notes: "",
@@ -322,11 +344,12 @@ export default function Holdings() {
   const [showAddCash, setShowAddCash] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
-  const [sortField, setSortField] = useState<keyof Holding>("ticker");
+  const [sortField, setSortField] = useState<HoldingsSortField>("ticker");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const { data: holdings = [], isLoading } = useQuery<Holding[]>({ queryKey: ["/api/holdings"] });
+  const { data: portfolioData, isLoading } = useEnrichedHoldings();
+  const holdings = portfolioData?.holdings ?? [];
 
   const addMutation = useMutation({
     mutationFn: (data: InsertHolding) => apiRequest("POST", "/api/holdings", data),
@@ -372,25 +395,44 @@ export default function Holdings() {
     onError: () => toast({ title: "Import failed", variant: "destructive" }),
   });
 
-  const handleSort = (field: keyof Holding) => {
+  const handleSort = (field: string) => {
     if (sortField === field) setSortDir(d => d === "asc" ? "desc" : "asc");
-    else { setSortField(field); setSortDir("asc"); }
+    else { setSortField(field as HoldingsSortField); setSortDir("asc"); }
   };
 
-  const sortedHoldings = [...holdings].sort((a, b) => {
-    if (a.ticker === "CASH" && b.ticker !== "CASH") return 1;
-    if (b.ticker === "CASH" && a.ticker !== "CASH") return -1;
-    const av = a[sortField] ?? "";
-    const bv = b[sortField] ?? "";
-    const cmp = av < bv ? -1 : av > bv ? 1 : 0;
-    return sortDir === "asc" ? cmp : -cmp;
-  });
+  const totalValue = portfolioData?.totalValue ?? 0;
+
+  const sortedHoldings = useMemo(() => {
+    return [...holdings].sort((a, b) => {
+      if (a.isCash && !b.isCash) return 1;
+      if (b.isCash && !a.isCash) return -1;
+      let av: number | string, bv: number | string;
+      switch (sortField) {
+        case "ticker":             av = a.ticker; bv = b.ticker; break;
+        case "sector":             av = a.sector; bv = b.sector; break;
+        case "purchaseDate":       av = a.purchaseDate ?? ""; bv = b.purchaseDate ?? ""; break;
+        case "shares":             av = a.shares; bv = b.shares; break;
+        case "avgCost":            av = a.avgCost; bv = b.avgCost; break;
+        case "currentPrice":       av = a.currentPrice; bv = b.currentPrice; break;
+        case "value":              av = a.value; bv = b.value; break;
+        case "pnl":                av = a.pnl; bv = b.pnl; break;
+        case "pnlPercent":         av = a.pnlPercent; bv = b.pnlPercent; break;
+        case "priceChangePercent": av = a.priceChangePercent; bv = b.priceChangePercent; break;
+        case "weight":             av = totalValue > 0 ? a.value / totalValue : 0; bv = totalValue > 0 ? b.value / totalValue : 0; break;
+        default:                   av = a.ticker; bv = b.ticker;
+      }
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      const secondary = a.ticker < b.ticker ? -1 : a.ticker > b.ticker ? 1 : 0;
+      return sortDir === "asc" ? (cmp || secondary) : (-cmp || secondary);
+    });
+  }, [holdings, sortField, sortDir, totalValue]);
 
   // Separate cash and non-cash for stats
-  const nonCash = holdings.filter(h => h.ticker !== "CASH");
-  const cashHoldings = holdings.filter(h => h.ticker === "CASH");
-  const totalCost = nonCash.reduce((s, h) => s + h.avgCost * h.shares, 0);
-  const totalCashValue = cashHoldings.reduce((s, h) => s + h.shares, 0);
+  const nonCash = holdings.filter(h => !h.isCash);
+  const cashValue = portfolioData?.cashValue ?? 0;
+  const totalPnl = portfolioData?.totalPnl ?? 0;
+  const totalPnlPercent = portfolioData?.totalPnlPercent ?? 0;
+  const todayPnl = nonCash.reduce((sum, h) => sum + h.priceChange * h.shares, 0);
 
   const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -422,11 +464,6 @@ export default function Holdings() {
     e.target.value = "";
   };
 
-  function SortIcon({ field }: { field: keyof Holding }) {
-    if (sortField !== field) return null;
-    return sortDir === "asc" ? <ChevronUp className="w-3 h-3 inline" /> : <ChevronDown className="w-3 h-3 inline" />;
-  }
-
   const editHolding = holdings.find(h => h.id === editId);
 
   return (
@@ -434,11 +471,22 @@ export default function Holdings() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-base font-semibold text-foreground">Holdings</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {nonCash.length} position{nonCash.length !== 1 ? "s" : ""} · Cost ${(totalCost / 1000).toFixed(1)}k
-            {totalCashValue > 0 && (
-              <span className="ml-1.5 inline-flex items-center gap-0.5 text-green-600 dark:text-green-400">
-                · <Banknote className="w-3 h-3" /> ${(totalCashValue / 1000).toFixed(1)}k cash
+          <p className="text-xs text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span>{nonCash.length} position{nonCash.length !== 1 ? "s" : ""}</span>
+            {totalValue > 0 && <span>· Value ${(totalValue / 1000).toFixed(1)}k</span>}
+            {totalValue > 0 && (
+              <span className={cn(totalPnl >= 0 ? "text-up" : "text-down")}>
+                · P&L {totalPnl >= 0 ? "+" : ""}${fmt(totalPnl)} ({totalPnlPercent >= 0 ? "+" : ""}{fmt(totalPnlPercent)}%)
+              </span>
+            )}
+            {totalValue > 0 && (
+              <span className={cn(todayPnl >= 0 ? "text-up" : "text-down")}>
+                · Today {todayPnl >= 0 ? "+" : ""}${fmt(todayPnl)}
+              </span>
+            )}
+            {cashValue > 0 && (
+              <span className="inline-flex items-center gap-0.5 text-green-600 dark:text-green-400">
+                · <Banknote className="w-3 h-3" /> ${(cashValue / 1000).toFixed(1)}k cash
               </span>
             )}
           </p>
@@ -481,46 +529,23 @@ export default function Holdings() {
         <CardContent className="px-0 pb-0">
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-border">
-                  {[
-                    { key: "ticker" as keyof Holding, label: "Ticker" },
-                    { key: "sector" as keyof Holding, label: "Sector" },
-                    { key: "shares" as keyof Holding, label: "Shares / Amount" },
-                    { key: "avgCost" as keyof Holding, label: "Avg Cost" },
-                  ].map(({ key, label }) => (
-                    <th
-                      key={key}
-                      className="px-4 py-2.5 text-left text-muted-foreground font-medium cursor-pointer hover:text-foreground select-none"
-                      onClick={() => handleSort(key)}
-                    >
-                      {label} <SortIcon field={key} />
-                    </th>
-                  ))}
-                  <th
-                    className="px-4 py-2.5 text-left text-muted-foreground font-medium cursor-pointer hover:text-foreground select-none"
-                    onClick={() => handleSort("purchaseDate" as keyof Holding)}
-                  >
-                    Purchased <SortIcon field={"purchaseDate" as keyof Holding} />
-                  </th>
-                  <th className="px-4 py-2.5 text-right text-muted-foreground font-medium">Total Cost</th>
-                  <th className="px-4 py-2.5 text-left text-muted-foreground font-medium">Notes</th>
-                  <th className="px-4 py-2.5 text-right text-muted-foreground font-medium">Actions</th>
-                </tr>
-              </thead>
+              <SortableTableHeader columns={COLUMNS} sortField={sortField} sortDir={sortDir} onSort={handleSort} />
               <tbody>
                 {isLoading
                   ? Array.from({ length: 5 }).map((_, i) => (
                       <tr key={i} className="border-b border-border/50">
-                        {Array.from({ length: 8 }).map((_, j) => (
-                          <td key={j} className="px-4 py-3"><Skeleton className="h-3 w-full" /></td>
+                        {COLUMNS.map((col, j) => (
+                          <td key={j} className={cn("px-4 py-3", col.className)}><Skeleton className="h-3 w-full" /></td>
                         ))}
                       </tr>
                     ))
                   : sortedHoldings.map(h => {
-                      const isCash = h.ticker === "CASH";
+                      const isCash = !!h.isCash;
+                      const priced = !isCash && h.currentPrice > 0;
+                      const weight = totalValue > 0 ? (h.value / totalValue) * 100 : 0;
                       return (
                         <tr key={h.id} data-testid={`holding-row-${h.id}`} className="border-b border-border/50 hover:bg-accent/50 transition-colors">
+                          {/* Ticker */}
                           <td className="px-4 py-3">
                             {isCash ? (
                               <div className="flex items-center gap-1.5">
@@ -529,16 +554,17 @@ export default function Holdings() {
                                 </div>
                                 <div>
                                   <div className="font-semibold text-green-600 dark:text-green-400">CASH</div>
-                                  <div className="text-muted-foreground truncate max-w-[130px]">{h.name}</div>
+                                  <div className="text-muted-foreground truncate max-w-[120px]">{h.name}</div>
                                 </div>
                               </div>
                             ) : (
                               <div>
                                 <div className="font-semibold text-foreground">{h.ticker}</div>
-                                <div className="text-muted-foreground truncate max-w-[150px]">{h.name}</div>
+                                <div className="text-muted-foreground truncate max-w-[120px]">{h.name}</div>
                               </div>
                             )}
                           </td>
+                          {/* Sector */}
                           <td className="px-4 py-3">
                             {isCash ? (
                               <span className="px-1.5 py-0.5 rounded text-xs bg-green-500/15 text-green-600 dark:text-green-400">Cash</span>
@@ -546,21 +572,63 @@ export default function Holdings() {
                               <span className="px-1.5 py-0.5 rounded text-xs bg-accent text-foreground">{h.sector}</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 font-mono-nums">
+                          {/* Shares */}
+                          <td className="px-4 py-3 text-right font-mono-nums">
                             {isCash ? `$${fmt(h.shares, 0)}` : fmt(h.shares, 0)}
                           </td>
-                          <td className="px-4 py-3 font-mono-nums text-muted-foreground">
-                            {isCash ? <span className="text-muted-foreground/60">-</span> : `$${fmt(h.avgCost)}`}
+                          {/* Avg Cost */}
+                          <td className="px-4 py-3 text-right font-mono-nums text-muted-foreground">
+                            {isCash ? <span className="text-muted-foreground/40">—</span> : `$${fmt(h.avgCost)}`}
                           </td>
-                          <td className="px-4 py-3 text-muted-foreground">
+                          {/* Price */}
+                          <td className="px-4 py-3 text-right font-mono-nums font-medium">
+                            {isCash ? <span className="text-muted-foreground/40">—</span> : priced ? `$${fmt(h.currentPrice)}` : <span className="text-muted-foreground/40">—</span>}
+                          </td>
+                          {/* Value */}
+                          <td className="px-4 py-3 text-right font-mono-nums">
+                            ${fmt(h.value)}
+                          </td>
+                          {/* P&L $ */}
+                          <td className="px-4 py-3 text-right font-mono-nums">
+                            {isCash ? (
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/10 text-green-600 dark:text-green-400">Cash</span>
+                            ) : priced ? (
+                              <span className={h.pnl >= 0 ? "text-up" : "text-down"}>
+                                {h.pnl >= 0 ? "+" : ""}${fmt(h.pnl)}
+                              </span>
+                            ) : <span className="text-muted-foreground/40">—</span>}
+                          </td>
+                          {/* P&L % */}
+                          <td className="px-4 py-3 text-right font-mono-nums">
+                            {!isCash && priced ? (
+                              <span className={h.pnlPercent >= 0 ? "text-up" : "text-down"}>
+                                {h.pnlPercent >= 0 ? "+" : ""}{fmt(h.pnlPercent)}%
+                              </span>
+                            ) : <span className="text-muted-foreground/40">—</span>}
+                          </td>
+                          {/* Day */}
+                          <td className="px-4 py-3 text-right font-mono-nums">
+                            {!isCash && priced ? (
+                              <span className={h.priceChangePercent >= 0 ? "text-up" : "text-down"}>
+                                {h.priceChangePercent >= 0 ? "+" : ""}{fmt(h.priceChangePercent)}%
+                              </span>
+                            ) : <span className="text-muted-foreground/40">—</span>}
+                          </td>
+                          {/* Weight */}
+                          <td className="px-4 py-3 text-right font-mono-nums text-muted-foreground">
+                            {totalValue > 0 ? `${fmt(weight, 1)}%` : <span className="text-muted-foreground/40">—</span>}
+                          </td>
+                          {/* Purchased */}
+                          <td className="px-4 py-3 text-muted-foreground hidden xl:table-cell">
                             {h.purchaseDate
                               ? new Date(h.purchaseDate + "T12:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                              : <span className="text-muted-foreground/40">-</span>}
+                              : <span className="text-muted-foreground/40">—</span>}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono-nums">
-                            {isCash ? `$${fmt(h.shares, 0)}` : `$${fmt(h.avgCost * h.shares)}`}
+                          {/* Notes */}
+                          <td className="px-4 py-3 text-muted-foreground max-w-[160px] truncate hidden xl:table-cell">
+                            {h.notes || <span className="text-muted-foreground/40">—</span>}
                           </td>
-                          <td className="px-4 py-3 text-muted-foreground max-w-[180px] truncate">{h.notes || "-"}</td>
+                          {/* Actions */}
                           <td className="px-4 py-3">
                             <div className="flex items-center justify-end gap-1">
                               <Button
@@ -635,7 +703,7 @@ export default function Holdings() {
           </DialogHeader>
           {editHolding && (
             <HoldingForm
-              initial={editHolding}
+              initial={editHolding as unknown as Holding}
               onSubmit={(data) => updateMutation.mutate({ id: editId!, data })}
               onCancel={() => setEditId(null)}
               loading={updateMutation.isPending}

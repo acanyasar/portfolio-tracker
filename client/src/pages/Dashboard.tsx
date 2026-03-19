@@ -113,9 +113,15 @@ export default function Dashboard() {
   // Today's total PP&L -L - exclude CASH (no price movement)
   const todayPnl = data?.holdings.filter(h => !h.isCash).reduce((sum, h) => sum + h.priceChange * h.shares, 0) ?? 0;
 
-  // Top movers - exclude CASH
-  const sorted = data ? [...data.holdings].filter(h => !h.isCash).sort((a, b) => Math.abs(b.priceChangePercent) - Math.abs(a.priceChangePercent)) : [];
-  const topMovers = sorted.slice(0, 5);
+  // Top movers - exclude CASH, split into gainers and losers
+  const priced = data ? data.holdings.filter(h => !h.isCash && h.currentPrice > 0) : [];
+  const MAX_PER_SIDE = priced.length <= 5 ? priced.length : 3;
+  const gainers = [...priced].filter(h => h.priceChangePercent > 0)
+    .sort((a, b) => b.priceChangePercent - a.priceChangePercent)
+    .slice(0, MAX_PER_SIDE);
+  const losers = [...priced].filter(h => h.priceChangePercent < 0)
+    .sort((a, b) => a.priceChangePercent - b.priceChangePercent)
+    .slice(0, MAX_PER_SIDE);
 
   // Stats
   const investedHoldings = data?.holdings.filter(h => !h.isCash) ?? [];
@@ -350,31 +356,70 @@ export default function Dashboard() {
             <CardTitle className="text-sm font-semibold">Top Movers Today</CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4 space-y-2">
-            {isLoading
-              ? Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)
-              : topMovers.map((h) => (
-                  <div
-                    key={h.id}
-                    data-testid={`mover-${h.ticker}`}
-                    className={cn(
-                      "flex items-center justify-between p-2 rounded-lg",
-                      h.priceChangePercent >= 0 ? "bg-up-subtle" : "bg-down-subtle"
-                    )}
-                  >
-                    <div>
-                      <span className="font-semibold text-sm text-foreground">{h.ticker}</span>
-                      <div className="text-xs text-muted-foreground">{fmtCurrency(h.currentPrice)}</div>
-                    </div>
-                    <div className="text-right">
-                      <span className={cn("font-mono-nums text-sm font-semibold", h.priceChangePercent >= 0 ? "text-up" : "text-down")}>
-                        {h.priceChangePercent >= 0 ? "+" : ""}{fmt(h.priceChangePercent)}%
-                      </span>
-                      <div className={cn("text-xs font-mono-nums", h.priceChangePercent >= 0 ? "text-up" : "text-down")}>
-                        {h.priceChange >= 0 ? "+" : ""}{fmtCurrency(h.priceChange)}
+            {isLoading ? (
+              Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)
+            ) : gainers.length === 0 && losers.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-2">No market movement today.</p>
+            ) : (
+              <>
+                {/* Gainers */}
+                {gainers.length > 0 && (
+                  <>
+                    <p className="text-[10px] font-semibold text-up uppercase tracking-wide">▲ Gainers</p>
+                    {gainers.map(h => (
+                      <div key={h.id} data-testid={`mover-${h.ticker}`} className="flex items-center justify-between p-2 rounded-lg bg-up-subtle">
+                        <div>
+                          <span className="font-semibold text-sm text-foreground">{h.ticker}</span>
+                          <div className="text-xs text-muted-foreground">{fmtCurrency(h.currentPrice)}</div>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-mono-nums text-sm font-semibold text-up">
+                            +{fmt(h.priceChangePercent)}%
+                          </span>
+                          <div className="text-xs font-mono-nums text-up">
+                            +{fmtCurrency(h.priceChange)}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                ))}
+                    ))}
+                    {gainers.length === 0 && (
+                      <p className="text-xs text-muted-foreground">No gainers today</p>
+                    )}
+                  </>
+                )}
+
+                {/* Divider */}
+                {gainers.length > 0 && losers.length > 0 && (
+                  <div className="border-t border-border/50 pt-1" />
+                )}
+
+                {/* Losers */}
+                {losers.length > 0 && (
+                  <>
+                    <p className="text-[10px] font-semibold text-down uppercase tracking-wide">▼ Losers</p>
+                    {losers.map(h => (
+                      <div key={h.id} data-testid={`mover-${h.ticker}`} className="flex items-center justify-between p-2 rounded-lg bg-down-subtle">
+                        <div>
+                          <span className="font-semibold text-sm text-foreground">{h.ticker}</span>
+                          <div className="text-xs text-muted-foreground">{fmtCurrency(h.currentPrice)}</div>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-mono-nums text-sm font-semibold text-down">
+                            {fmt(h.priceChangePercent)}%
+                          </span>
+                          <div className="text-xs font-mono-nums text-down">
+                            {fmtCurrency(h.priceChange)}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {losers.length === 0 && (
+                      <p className="text-xs text-muted-foreground">All positions up today</p>
+                    )}
+                  </>
+                )}
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
