@@ -676,6 +676,48 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     res.status(204).end();
   });
 
+  // In-memory chart cache: 15-minute TTL so repeated page loads don't hammer Yahoo
+  const chartCache = new Map<string, { data: number[]; expiresAt: number }>();
+  const CHART_TTL = 15 * 60 * 1000;
+
+  // Returns ~30 daily close prices per ticker for sparkline charts
+  app.post("/api/prices/charts", async (req, res) => {
+    const tickers: string[] = req.body?.tickers ?? [];
+    if (!Array.isArray(tickers) || tickers.length === 0) {
+      return res.status(400).json({ error: "tickers array required" });
+    }
+    const headers = {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "Accept": "application/json",
+    };
+    const now = Date.now();
+    const results: Record<string, number[]> = {};
+    await Promise.all(
+      tickers.map(async (ticker) => {
+        const key = ticker.toUpperCase();
+        const cached = chartCache.get(key);
+        if (cached && cached.expiresAt > now) {
+          results[key] = cached.data;
+          return;
+        }
+        try {
+          const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(key)}?interval=1d&range=1mo`;
+          const r = await fetch(url, { headers });
+          if (!r.ok) return;
+          const json = await r.json();
+          const closes: number[] | undefined = json?.chart?.result?.[0]?.indicators?.quote?.[0]?.close;
+          if (!closes) return;
+          const clean = closes.filter((v): v is number => v != null && isFinite(v)).slice(-30);
+          if (clean.length >= 2) {
+            chartCache.set(key, { data: clean, expiresAt: now + CHART_TTL });
+            results[key] = clean;
+          }
+        } catch { /* skip this ticker */ }
+      })
+    );
+    res.json(results);
+  });
+
   app.post("/api/prices/batch", async (req, res) => {
     const tickers: string[] = req.body?.tickers ?? [];
     if (!Array.isArray(tickers) || tickers.length === 0) {
