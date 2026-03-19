@@ -1,6 +1,7 @@
 import { eq, and, isNull } from "drizzle-orm";
 import {
   users, holdings, watchlist, transactions, notifications, priceCache,
+  type WidgetPreferences, defaultWidgetPreferences,
   type User, type InsertUser,
   type Holding, type InsertHolding,
   type WatchlistItem, type InsertWatchlistItem,
@@ -14,6 +15,7 @@ export interface IStorage {
   getUserById(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(username: string, passwordHash: string): Promise<User>;
+  updateUserPreferences(id: number, prefs: WidgetPreferences): Promise<User | undefined>;
 
   // Holdings
   getHoldings(userId: number): Promise<Holding[]>;
@@ -65,7 +67,7 @@ export class MemoryStorage implements IStorage {
 
   constructor() {
     // Create a default memory user (id=1)
-    const defaultUser: User = { id: 1, username: "admin", passwordHash: "", createdAt: new Date() };
+    const defaultUser: User = { id: 1, username: "admin", passwordHash: "", createdAt: new Date(), dashboardWidgets: defaultWidgetPreferences };
     this.usersMap.set(1, defaultUser);
     this.userIdCounter = 2;
 
@@ -106,9 +108,16 @@ export class MemoryStorage implements IStorage {
   }
   async createUser(username: string, passwordHash: string): Promise<User> {
     const id = this.userIdCounter++;
-    const user: User = { id, username, passwordHash, createdAt: new Date() };
+    const user: User = { id, username, passwordHash, createdAt: new Date(), dashboardWidgets: defaultWidgetPreferences };
     this.usersMap.set(id, user);
     return user;
+  }
+  async updateUserPreferences(id: number, prefs: WidgetPreferences): Promise<User | undefined> {
+    const user = this.usersMap.get(id);
+    if (!user) return undefined;
+    const updated = { ...user, dashboardWidgets: prefs };
+    this.usersMap.set(id, updated);
+    return updated;
   }
 
   // Holdings
@@ -244,6 +253,11 @@ export class DatabaseStorage implements IStorage {
   async createUser(username: string, passwordHash: string): Promise<User> {
     const { db } = await import("./db");
     const rows = await db.insert(users).values({ username, passwordHash }).returning();
+    return rows[0];
+  }
+  async updateUserPreferences(id: number, prefs: WidgetPreferences): Promise<User | undefined> {
+    const { db } = await import("./db");
+    const rows = await db.update(users).set({ dashboardWidgets: prefs }).where(eq(users.id, id)).returning();
     return rows[0];
   }
 

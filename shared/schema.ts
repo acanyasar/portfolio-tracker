@@ -1,6 +1,14 @@
-import { pgTable, text, integer, real, serial, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, real, serial, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// Widget preferences
+export type WidgetId = "sectorAllocation" | "dividendIncome" | "upcomingEvents" | "performanceRanking" | "portfolioHealth" | "quickActions";
+export type WidgetPreferences = Record<WidgetId, boolean>;
+export const defaultWidgetPreferences: WidgetPreferences = {
+  sectorAllocation: true, dividendIncome: true, upcomingEvents: true,
+  performanceRanking: true, portfolioHealth: true, quickActions: true,
+};
 
 // Users
 export const users = pgTable("users", {
@@ -8,9 +16,10 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  dashboardWidgets: jsonb("dashboard_widgets").$type<WidgetPreferences>().notNull().default(defaultWidgetPreferences),
 });
 
-export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
+export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, dashboardWidgets: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 

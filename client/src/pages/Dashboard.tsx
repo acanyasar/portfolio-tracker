@@ -7,6 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, fmt } from "@/lib/utils";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useWidgetPreferences } from "@/hooks/useWidgetPreferences";
+import WidgetCustomizeDialog from "@/components/widgets/WidgetCustomizeDialog";
+import SectorAllocationWidget from "@/components/widgets/SectorAllocationWidget";
+import PerformanceRankingWidget from "@/components/widgets/PerformanceRankingWidget";
+import PortfolioHealthWidget from "@/components/widgets/PortfolioHealthWidget";
+import QuickActionsWidget from "@/components/widgets/QuickActionsWidget";
+import DividendIncomeWidget from "@/components/widgets/DividendIncomeWidget";
+import UpcomingEventsWidget from "@/components/widgets/UpcomingEventsWidget";
 
 interface EnrichedHolding {
   id: number;
@@ -75,6 +83,7 @@ type SortField = "ticker" | "shares" | "avgCost" | "currentPrice" | "value" | "p
 export default function Dashboard() {
   const [sortField, setSortField] = useState<SortField>("value");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const { prefs } = useWidgetPreferences();
 
   const handleSort = (field: SortField) => {
     if (sortField === field) setSortDir(d => d === "asc" ? "desc" : "asc");
@@ -116,11 +125,14 @@ export default function Dashboard() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-base font-semibold text-foreground">Portfolio Overview</h1>
-          {lastUpdated && (
-            <p className="text-xs text-muted-foreground mt-0.5">Updated {lastUpdated}</p>
-          )}
+        <div className="flex items-center gap-2">
+          <div>
+            <h1 className="text-base font-semibold text-foreground">Portfolio Overview</h1>
+            {lastUpdated && (
+              <p className="text-xs text-muted-foreground mt-0.5">Updated {lastUpdated}</p>
+            )}
+          </div>
+          <WidgetCustomizeDialog />
         </div>
         <Button
           data-testid="btn-refresh"
@@ -196,6 +208,18 @@ export default function Dashboard() {
           </>
         ) : null}
       </div>
+
+      {/* Widget Grid */}
+      {Object.values(prefs).some(Boolean) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {prefs.sectorAllocation   && <SectorAllocationWidget />}
+          {prefs.performanceRanking && <PerformanceRankingWidget />}
+          {prefs.portfolioHealth    && <PortfolioHealthWidget />}
+          {prefs.quickActions       && <QuickActionsWidget />}
+          {prefs.dividendIncome     && <DividendIncomeWidget />}
+          {prefs.upcomingEvents     && <UpcomingEventsWidget />}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Holdings Table */}

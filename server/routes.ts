@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import passport from "passport";
 import bcrypt from "bcryptjs";
 import { storage } from "./storage";
-import { insertHoldingSchema, insertWatchlistSchema, insertTransactionSchema } from "@shared/schema";
+import { insertHoldingSchema, insertWatchlistSchema, insertTransactionSchema, defaultWidgetPreferences } from "@shared/schema";
 import type { User } from "@shared/schema";
 import { z } from "zod";
 import { getPrice, fetchYahooPrice } from "./priceService";
@@ -190,19 +190,31 @@ async function fetchDividendHistory5yr(ticker: string): Promise<{
 } | null> {
   try {
     const nowSec = Math.floor(Date.now() / 1000);
+    const threeYearsAgo = nowSec - 3 * 365 * 24 * 60 * 60;
     const sixYearsAgo = nowSec - 6 * 365 * 24 * 60 * 60;
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}` +
-      `?period1=${sixYearsAgo}&period2=${nowSec}&interval=1mo&events=dividends`;
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "application/json",
-      },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const divEvents = data?.chart?.result?.[0]?.events?.dividends;
-    if (!divEvents || Object.keys(divEvents).length === 0) return null;
+    const headers = {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "Accept": "application/json",
+    };
+    const buildUrl = (p1: number, p2: number) =>
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}` +
+      `?period1=${p1}&period2=${p2}&interval=1mo&events=dividends`;
+
+    // Two parallel 3-year fetches — a single 6-year fetch with interval=1mo
+    // is silently truncated by Yahoo Finance, so we split and merge.
+    const [recentRes, olderRes] = await Promise.all([
+      fetch(buildUrl(threeYearsAgo, nowSec), { headers }),
+      fetch(buildUrl(sixYearsAgo, threeYearsAgo), { headers }),
+    ]);
+
+    const recentData = recentRes.ok ? await recentRes.json() : null;
+    const olderData = olderRes.ok ? await olderRes.json() : null;
+
+    const recentDivs = recentData?.chart?.result?.[0]?.events?.dividends ?? {};
+    const olderDivs = olderData?.chart?.result?.[0]?.events?.dividends ?? {};
+    const divEvents = { ...olderDivs, ...recentDivs };
+
+    if (Object.keys(divEvents).length === 0) return null;
 
     // Group dividends by calendar year
     const byYear: Record<number, number> = {};
@@ -213,7 +225,7 @@ async function fetchDividendHistory5yr(ticker: string): Promise<{
     }
 
     const currentYear = new Date().getFullYear();
-    // Use the last complete year as the most recent reference point
+    // Use the last complete calendar year as the reference point
     const latestYear = currentYear - 1;
 
     // Build sparkline data for last 5 complete years
@@ -234,11 +246,16 @@ async function fetchDividendHistory5yr(ticker: string): Promise<{
     const cagr3yr = computeCagr(latestYear - 3, latestYear);
     const cagr5yr = computeCagr(latestYear - 5, latestYear);
 
-    // Consecutive years of dividend increases (going back from most recent)
+    // Count consecutive years of dividend increases, starting from the last COMPLETE
+    // calendar year. The current year is always incomplete (partial payments), so
+    // starting from sortedYears[0] would compare a partial year against a full year
+    // and always break the streak at 0.
     let streak = 0;
-    for (let y = latestYear; y >= latestYear - 5; y--) {
-      if (byYear[y] != null && byYear[y - 1] != null && byYear[y] > byYear[y - 1]) {
+    let checkYear = latestYear;
+    while (byYear[checkYear] != null && byYear[checkYear - 1] != null) {
+      if (byYear[checkYear] > byYear[checkYear - 1]) {
         streak++;
+        checkYear--;
       } else {
         break;
       }
@@ -327,6 +344,28 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     const data = await fetchYahooQuoteSummary(ticker);
     if (!data) return res.status(404).json({ error: "Ticker not found" });
     res.json(data);
+  });
+
+  // ── User preferences ──────────────────────────────────────────
+
+  app.get("/api/user/preferences", (req, res) => {
+    const user = req.user as User;
+    res.json(user.dashboardWidgets ?? defaultWidgetPreferences);
+  });
+
+  app.patch("/api/user/preferences", async (req, res) => {
+    const userId = (req.user as User).id;
+    const validKeys: Array<keyof typeof defaultWidgetPreferences> = [
+      "sectorAllocation", "dividendIncome", "upcomingEvents",
+      "performanceRanking", "portfolioHealth", "quickActions",
+    ];
+    const current = (req.user as User).dashboardWidgets ?? defaultWidgetPreferences;
+    const updates: Partial<typeof defaultWidgetPreferences> = {};
+    for (const key of validKeys) {
+      if (typeof req.body[key] === "boolean") updates[key] = req.body[key];
+    }
+    const updated = await storage.updateUserPreferences(userId, { ...current, ...updates });
+    res.json(updated?.dashboardWidgets ?? current);
   });
 
   // ── Holdings ──────────────────────────────────────────────────
@@ -715,6 +754,45 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       })
     );
     res.json(results.filter(Boolean));
+  });
+
+  app.get("/api/portfolio/dividend-summary", async (req, res) => {
+    const userId = (req.user as User).id;
+    const holdingsList = (await storage.getHoldings(userId)).filter(h => h.ticker !== "CASH");
+    const divData = await Promise.all(
+      holdingsList.map(async h => {
+        const div = await fetchYahooDividends(h.ticker);
+        if (!div || div.dividendRate === 0) return null;
+        return {
+          annualIncome: div.dividendRate * h.shares,
+          payoutFrequency: div.payoutFrequency,
+          nextPaymentDate: div.nextPaymentDate,
+          nextPayment: (div.nextPaymentAmount ?? div.lastDividendValue ?? 0) * h.shares,
+        };
+      })
+    );
+    const paying = divData.filter(Boolean) as NonNullable<(typeof divData)[0]>[];
+
+    // Build 12-month distribution: 6 past months + 6 future months
+    const now = new Date();
+    const months = Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1);
+      const label = d.toLocaleDateString("en-US", { month: "short" });
+      const isPast = d < new Date(now.getFullYear(), now.getMonth(), 1);
+      let amount = 0;
+      for (const h of paying) {
+        if (!h.nextPaymentDate) continue;
+        const nextDate = new Date(h.nextPaymentDate + "T12:00:00Z");
+        const interval = Math.round(12 / h.payoutFrequency);
+        // How many intervals away is this month from the next payment month?
+        const monthsDiff = (d.getFullYear() - nextDate.getFullYear()) * 12 + d.getMonth() - nextDate.getMonth();
+        if (monthsDiff % interval === 0) amount += h.nextPayment;
+      }
+      return { month: label, amount, projected: !isPast };
+    });
+
+    const totalAnnual = paying.reduce((s, h) => s + h.annualIncome, 0);
+    res.json({ months, totalAnnual, avgMonthly: totalAnnual / 12 });
   });
 
   // ── Portfolio history ─────────────────────────────────────────
