@@ -49,10 +49,3 @@ export async function seedIfEmpty() {
 
   console.log(`[seed] Created admin user '${adminUsername}' + inserted 11 holdings and 3 watchlist items`);
 }
-
-// Allow running standalone: tsx server/seed.ts
-if (import.meta.url === new URL(process.argv[1], import.meta.url).href) {
-  seedIfEmpty()
-    .then(() => process.exit(0))
-    .catch((err) => { console.error(err); process.exit(1); });
-}
