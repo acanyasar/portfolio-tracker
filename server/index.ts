@@ -120,7 +120,10 @@ app.use((req, res, next) => {
   }
 
   const port = parseInt(process.env.PORT || "3001", 10);
-  httpServer.listen(port, () => {
+  httpServer.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
   });
-})();
+})().catch((err) => {
+  console.error("[startup] Fatal error during startup:", err);
+  process.exit(1);
+});
