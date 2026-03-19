@@ -91,12 +91,25 @@ app.use((req, res, next) => {
 
   await registerRoutes(httpServer, app);
 
+  process.on("uncaughtException", (err) => {
+    console.error("[startup] Uncaught exception:", err);
+    process.exit(1);
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    console.error("[startup] Unhandled rejection:", reason);
+    process.exit(1);
+  });
+
   if (process.env.DATABASE_URL) {
+    console.log("[startup] Running seed...");
     const { seedIfEmpty } = await import("./seed");
     await seedIfEmpty();
+    console.log("[startup] Seed done. Starting alert job...");
 
     const { startAlertJob } = await import("./alerts");
     const alertHandle = startAlertJob(storage);
+    console.log("[startup] Alert job started.");
 
     process.on("SIGTERM", () => {
       clearInterval(alertHandle);
@@ -104,6 +117,7 @@ app.use((req, res, next) => {
     });
   }
 
+  console.log("[startup] Registering error middleware...");
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
@@ -112,14 +126,18 @@ app.use((req, res, next) => {
     return res.status(status).json({ message });
   });
 
+  console.log("[startup] NODE_ENV =", process.env.NODE_ENV);
   if (process.env.NODE_ENV === "production") {
+    console.log("[startup] Calling serveStatic...");
     serveStatic(app);
+    console.log("[startup] serveStatic done.");
   } else {
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
   }
 
   const port = parseInt(process.env.PORT || "3001", 10);
+  console.log(`[startup] Binding to port ${port}...`);
   httpServer.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
   });
