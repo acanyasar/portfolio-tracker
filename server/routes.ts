@@ -560,6 +560,11 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     }
   });
 
+  app.post("/api/prices/invalidate", async (_req, res) => {
+    await storage.clearPriceCache();
+    res.status(204).end();
+  });
+
   app.post("/api/prices/batch", async (req, res) => {
     const tickers: string[] = req.body?.tickers ?? [];
     if (!Array.isArray(tickers) || tickers.length === 0) {

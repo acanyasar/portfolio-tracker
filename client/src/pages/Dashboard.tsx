@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 
 interface EnrichedHolding {
   id: number;
@@ -90,7 +90,16 @@ export default function Dashboard() {
     refetchInterval: 60_000,
   });
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ["/api/portfolio/summary"] });
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const refresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await apiRequest("POST", "/api/prices/invalidate");
+    } finally {
+      await queryClient.invalidateQueries({ queryKey: ["/api/portfolio/summary"] });
+      setIsRefreshing(false);
+    }
+  };
 
   const lastUpdated = dataUpdatedAt
     ? new Date(dataUpdatedAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
@@ -122,10 +131,10 @@ export default function Dashboard() {
           variant="outline"
           size="sm"
           onClick={refresh}
-          disabled={isLoading}
+          disabled={isRefreshing}
           className="text-xs h-7 px-2.5"
         >
-          <RefreshCw className={cn("w-3 h-3 mr-1.5", isLoading && "animate-spin")} />
+          <RefreshCw className={cn("w-3 h-3 mr-1.5", isRefreshing && "animate-spin")} />
           Refresh
         </Button>
       </div>

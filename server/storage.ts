@@ -44,6 +44,7 @@ export interface IStorage {
   getPriceCache(ticker: string): Promise<PriceCache | undefined>;
   setPriceCache(data: PriceCache): Promise<void>;
   getAllPriceCaches(): Promise<PriceCache[]>;
+  clearPriceCache(): Promise<void>;
 }
 
 // ── In-memory storage (used when DATABASE_URL is not set) ─────────────────────
@@ -217,6 +218,9 @@ export class MemoryStorage implements IStorage {
   async getAllPriceCaches(): Promise<PriceCache[]> {
     return Array.from(this.priceCacheMap.values());
   }
+  async clearPriceCache(): Promise<void> {
+    this.priceCacheMap.clear();
+  }
 }
 
 // ── Database storage ──────────────────────────────────────────────────────────
@@ -364,6 +368,10 @@ export class DatabaseStorage implements IStorage {
   async getAllPriceCaches(): Promise<PriceCache[]> {
     const { db } = await import("./db");
     return db.select().from(priceCache);
+  }
+  async clearPriceCache(): Promise<void> {
+    const { db } = await import("./db");
+    await db.delete(priceCache);
   }
 }
 
