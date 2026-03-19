@@ -1,12 +1,11 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useRef, useEffect } from "react";
-import { Plus, Trash2, Pencil, Bell, BellOff, TrendingUp, TrendingDown, Loader2, CheckCircle2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Plus, Trash2, Pencil, Bell, BellOff, Eye, Loader2, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { cn, fmt } from "@/lib/utils";
@@ -21,8 +20,84 @@ interface PriceData {
   low52w?: number;
 }
 
+// ── Sparkline ─────────────────────────────────────────────────────────────────
+
+function generateSparkline(currentPrice: number, changePercent: number): number[] {
+  const steps = 10;
+  const startPrice = currentPrice / (1 + changePercent / 100);
+  return Array.from({ length: steps }, (_, i) => {
+    const t = i / (steps - 1);
+    const noise = (Math.sin(i * 2.5) * 0.3 + Math.cos(i * 1.7) * 0.2) * currentPrice * 0.008;
+    return startPrice + (currentPrice - startPrice) * t + noise;
+  });
+}
+
+function Sparkline({ data, positive }: { data: number[]; positive: boolean }) {
+  const W = 88, H = 36;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const toX = (i: number) => (i / (data.length - 1)) * W;
+  const toY = (v: number) => H - ((v - min) / range) * (H - 4) - 2;
+
+  const pts = data.map((v, i) => `${toX(i)},${toY(v)}`).join(" ");
+  const area = `M0,${H} ${data.map((v, i) => `L${toX(i)},${toY(v)}`).join(" ")} L${W},${H} Z`;
+  const color = positive ? "hsl(145 63% 42%)" : "hsl(0 91% 71%)";
+  const gradId = `sg-${data[0].toFixed(0)}-${data[data.length - 1].toFixed(0)}`;
+
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={area} fill={`url(#${gradId})`} />
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={toX(data.length - 1)} cy={toY(data[data.length - 1])} r="2.5" fill={color} />
+    </svg>
+  );
+}
+
+// ── Price range bar ───────────────────────────────────────────────────────────
+
+function PriceRangeBar({ low, high, current }: { low: number; high: number; current: number }) {
+  const pad = (high - low) * 0.15 || current * 0.05;
+  const min = low - pad;
+  const max = high + pad;
+  const span = max - min;
+  const pct = (v: number) => `${Math.max(0, Math.min(100, ((v - min) / span) * 100))}%`;
+
+  return (
+    <div className="relative h-7 mt-1">
+      {/* Track */}
+      <div className="absolute top-[13px] left-0 right-0 h-[3px] rounded-full bg-muted" />
+      {/* Range fill */}
+      <div
+        className="absolute top-[13px] h-[3px] rounded-full bg-amber-400/50"
+        style={{ left: pct(low), width: `${((high - low) / span) * 100}%` }}
+      />
+      {/* Current price cursor */}
+      <div
+        className="absolute top-[7px] w-[3px] h-[15px] rounded-full bg-foreground shadow-sm"
+        style={{ left: pct(current), transform: "translateX(-1.5px)" }}
+      />
+      {/* Labels */}
+      <span className="absolute top-0 text-[9px] text-muted-foreground/60 font-mono-nums" style={{ left: pct(low), transform: "translateX(-50%)" }}>
+        ${low % 1 === 0 ? low : fmt(low)}
+      </span>
+      <span className="absolute top-0 text-[9px] text-muted-foreground/60 font-mono-nums" style={{ left: pct(high), transform: "translateX(-50%)" }}>
+        ${high % 1 === 0 ? high : fmt(high)}
+      </span>
+    </div>
+  );
+}
+
+// ── Watchlist form ────────────────────────────────────────────────────────────
+
 const emptyForm = (): Partial<InsertWatchlistItem> => ({
-  ticker: "", name: "", alertLow: undefined, alertHigh: undefined, notes: ""
+  ticker: "", name: "", alertLow: undefined, alertHigh: undefined, notes: "",
 });
 
 interface WatchlistFormProps {
@@ -50,7 +125,7 @@ function WatchlistForm({ initial, onSubmit, onCancel, loading }: WatchlistFormPr
     setLookupStatus("loading");
     lookupTimerRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/lookup/${ticker}`);
+        const res = await fetch(`/api/lookup/${ticker}`, { credentials: "include" });
         if (!res.ok) { setLookupStatus("notfound"); return; }
         const data = await res.json();
         setForm(f => ({ ...f, ticker, name: data.name || f.name }));
@@ -114,14 +189,146 @@ function WatchlistForm({ initial, onSubmit, onCancel, loading }: WatchlistFormPr
   );
 }
 
-function AlertStatus({ item, price }: { item: WatchlistItem; price?: number }) {
-  if (!price || (!item.alertLow && !item.alertHigh)) return null;
-  const atLow = item.alertLow && price <= item.alertLow;
-  const atHigh = item.alertHigh && price >= item.alertHigh;
-  if (atLow) return <span className="flex items-center gap-1 text-xs text-down font-medium"><Bell className="w-3 h-3" /> Below low alert</span>;
-  if (atHigh) return <span className="flex items-center gap-1 text-xs text-up font-medium"><Bell className="w-3 h-3" /> Above high alert</span>;
-  return null;
+// ── Watchlist card ────────────────────────────────────────────────────────────
+
+interface WatchlistCardProps {
+  item: WatchlistItem;
+  pd?: PriceData;
+  index: number;
+  onEdit: () => void;
+  onDelete: () => void;
 }
+
+function WatchlistCard({ item, pd, index, onEdit, onDelete }: WatchlistCardProps) {
+  const price = pd?.price;
+  const changePercent = pd?.changePercent ?? 0;
+  const positive = changePercent >= 0;
+
+  const atLow = !!(item.alertLow && price && price <= item.alertLow);
+  const atHigh = !!(item.alertHigh && price && price >= item.alertHigh);
+  const alertTriggered = atLow || atHigh;
+  const hasAlert = !!(item.alertLow || item.alertHigh);
+
+  const sparkline = price ? generateSparkline(price, changePercent) : null;
+
+  // Range bar data: prefer alert thresholds, fall back to 52w range
+  const rangeLow = item.alertLow ?? pd?.low52w;
+  const rangeHigh = item.alertHigh ?? pd?.high52w;
+  const showRange = rangeLow != null && rangeHigh != null && price != null && rangeHigh > rangeLow;
+
+  return (
+    <div
+      data-testid={`watchlist-card-${item.id}`}
+      className={cn(
+        "group relative flex flex-col sm:grid sm:grid-cols-[minmax(160px,1.5fr)_minmax(100px,1fr)_auto_minmax(160px,1.5fr)] items-center gap-x-6 gap-y-3",
+        "bg-card/60 border rounded-xl px-5 py-4 transition-all duration-300",
+        "hover:-translate-y-px hover:shadow-md hover:bg-card hover:border-border/80",
+        alertTriggered
+          ? "border-amber-500/40 border-l-2 border-l-amber-500"
+          : "border-border/50",
+      )}
+      style={{ animationDelay: `${index * 60}ms` }}
+    >
+      {/* Col 1: Ticker info */}
+      <div className="w-full sm:w-auto">
+        <div className="flex items-center gap-2 mb-0.5">
+          <span className="text-base font-bold tracking-tight text-foreground">{item.ticker}</span>
+          {alertTriggered && (
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-500 border border-amber-500/20">
+              {atLow ? "↓ Low" : "↑ High"}
+            </span>
+          )}
+        </div>
+        <div className="text-xs text-muted-foreground truncate max-w-[180px]">{item.name}</div>
+        {item.notes && (
+          <div className="text-[10px] text-muted-foreground/50 italic mt-1 truncate max-w-[180px]">{item.notes}</div>
+        )}
+      </div>
+
+      {/* Col 2: Price + change */}
+      <div className="w-full sm:w-auto">
+        {price ? (
+          <>
+            <div className="text-xl font-semibold font-mono-nums text-foreground tracking-tight">
+              ${fmt(price)}
+            </div>
+            <div className={cn("text-xs font-mono-nums font-medium mt-0.5", positive ? "text-up" : "text-down")}>
+              {positive ? "+" : ""}{fmt(changePercent)}%
+            </div>
+          </>
+        ) : (
+          <div className="space-y-1.5">
+            <Skeleton className="h-5 w-20" />
+            <Skeleton className="h-3 w-12" />
+          </div>
+        )}
+      </div>
+
+      {/* Col 3: Sparkline */}
+      <div className="hidden sm:flex justify-center">
+        {sparkline ? (
+          <Sparkline data={sparkline} positive={positive} />
+        ) : (
+          <div className="w-[88px] h-9 flex items-center justify-center">
+            <Skeleton className="h-3 w-full" />
+          </div>
+        )}
+      </div>
+
+      {/* Col 4: Range bar / Alert thresholds */}
+      <div className="w-full sm:w-auto">
+        {showRange ? (
+          <>
+            <div className="text-[9px] uppercase tracking-widest text-muted-foreground/50 mb-0.5 font-medium">
+              {item.alertLow || item.alertHigh ? "Alert range" : "52w range"}
+            </div>
+            <PriceRangeBar low={rangeLow!} high={rangeHigh!} current={price!} />
+          </>
+        ) : hasAlert ? (
+          <div className="flex flex-col gap-1 text-xs">
+            {item.alertLow && (
+              <span className={cn("flex items-center gap-1", atLow ? "text-down font-semibold" : "text-muted-foreground")}>
+                <Bell className="w-3 h-3 shrink-0" />
+                Below ${fmt(item.alertLow)}
+              </span>
+            )}
+            {item.alertHigh && (
+              <span className={cn("flex items-center gap-1", atHigh ? "text-up font-semibold" : "text-muted-foreground")}>
+                <Bell className="w-3 h-3 shrink-0" />
+                Above ${fmt(item.alertHigh)}
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="flex items-center gap-1 text-xs text-muted-foreground/50">
+            <BellOff className="w-3 h-3" />
+            No alerts set
+          </span>
+        )}
+      </div>
+
+      {/* Hover actions */}
+      <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+        <button
+          data-testid={`btn-edit-wl-${item.id}`}
+          onClick={onEdit}
+          className="w-7 h-7 rounded-lg border border-border/60 bg-background/80 text-muted-foreground hover:text-foreground hover:bg-accent flex items-center justify-center transition-colors"
+        >
+          <Pencil className="w-3 h-3" />
+        </button>
+        <button
+          data-testid={`btn-delete-wl-${item.id}`}
+          onClick={onDelete}
+          className="w-7 h-7 rounded-lg border border-border/60 bg-background/80 text-muted-foreground hover:text-destructive hover:border-destructive/30 hover:bg-destructive/5 flex items-center justify-center transition-colors"
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function Watchlist() {
   const { toast } = useToast();
@@ -131,12 +338,11 @@ export default function Watchlist() {
 
   const { data: watchlist = [], isLoading } = useQuery<WatchlistItem[]>({ queryKey: ["/api/watchlist"] });
 
-  // Fetch prices for all watchlist items
   const tickers = watchlist.map(w => w.ticker);
   const { data: prices = {} } = useQuery<Record<string, PriceData>>({
     queryKey: ["/api/prices/batch", tickers.join(",")],
     queryFn: () => tickers.length > 0
-      ? fetch("/api/prices/batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickers }) }).then(r => r.json())
+      ? fetch("/api/prices/batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickers }), credentials: "include" }).then(r => r.json())
       : Promise.resolve({}),
     enabled: tickers.length > 0,
     refetchInterval: 60_000,
@@ -162,113 +368,79 @@ export default function Watchlist() {
 
   const editItem = watchlist.find(w => w.id === editId);
 
-  // Count alerts triggered
   const triggeredAlerts = watchlist.filter(w => {
     const p = prices[w.ticker]?.price;
     if (!p) return false;
     return (w.alertLow && p <= w.alertLow) || (w.alertHigh && p >= w.alertHigh);
   });
 
+  const totalWatchlistValue = watchlist.reduce((s, w) => s + (prices[w.ticker]?.price ?? 0), 0);
+  const hasAlerts = watchlist.filter(w => w.alertLow || w.alertHigh).length;
+
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-6 space-y-6 max-w-5xl">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-base font-semibold text-foreground">Watchlist</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {watchlist.length} stocks · {triggeredAlerts.length > 0 && <span className="text-down font-medium">{triggeredAlerts.length} alert{triggeredAlerts.length > 1 ? "s" : ""} triggered</span>}
-            {triggeredAlerts.length === 0 && "No alerts triggered"}
+            {watchlist.length} stock{watchlist.length !== 1 ? "s" : ""} tracked
+            {triggeredAlerts.length > 0 && (
+              <span className="ml-1.5 text-amber-500 font-medium">· {triggeredAlerts.length} alert{triggeredAlerts.length > 1 ? "s" : ""} triggered</span>
+            )}
           </p>
         </div>
         <Button data-testid="btn-add-watchlist" size="sm" className="text-xs h-7 px-2.5" onClick={() => setShowAdd(true)}>
           <Plus className="w-3 h-3 mr-1.5" />
-          Add
+          Add stock
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {/* Summary strip */}
+      {watchlist.length > 0 && (
+        <div className="grid grid-cols-3 divide-x divide-border border border-border/50 rounded-xl overflow-hidden bg-muted/20">
+          {[
+            { label: "Watching", value: String(watchlist.length) },
+            { label: "Combined value", value: totalWatchlistValue > 0 ? `$${fmt(totalWatchlistValue)}` : "—" },
+            { label: "Alerts set", value: String(hasAlerts), accent: triggeredAlerts.length > 0 },
+          ].map(({ label, value, accent }) => (
+            <div key={label} className="py-4 px-5 text-center">
+              <div className="text-[10px] uppercase tracking-widest text-muted-foreground/60 font-medium mb-1.5">{label}</div>
+              <div className={cn("text-xl font-semibold font-mono-nums", accent ? "text-amber-500" : "text-foreground")}>
+                {value}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Card list */}
+      <div className="space-y-2.5">
         {isLoading
-          ? Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-36" />)
-          : watchlist.map(item => {
-              const pd = prices[item.ticker];
-              const price = pd?.price;
-              const change = pd?.changePercent;
-              const atLow = item.alertLow && price && price <= item.alertLow;
-              const atHigh = item.alertHigh && price && price >= item.alertHigh;
-              const alertTriggered = atLow || atHigh;
-
-              return (
-                <Card
+          ? Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)
+          : watchlist.length === 0
+            ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <Eye className="w-10 h-10 text-muted-foreground/20 mb-4" />
+                <p className="text-sm font-medium text-muted-foreground">Nothing on your watchlist yet</p>
+                <p className="text-xs text-muted-foreground/60 mt-1 mb-4">Add stocks you're watching to track prices and set alerts</p>
+                <Button size="sm" className="text-xs" onClick={() => setShowAdd(true)}>
+                  <Plus className="w-3 h-3 mr-1.5" />
+                  Add your first stock
+                </Button>
+              </div>
+            )
+            : watchlist.map((item, i) => (
+                <WatchlistCard
                   key={item.id}
-                  data-testid={`watchlist-card-${item.id}`}
-                  className={cn("relative", alertTriggered && "ring-1 ring-primary")}
-                >
-                  <CardContent className="pt-4 pb-3 px-4">
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
-                        <div className="font-semibold text-foreground text-sm">{item.ticker}</div>
-                        <div className="text-xs text-muted-foreground truncate max-w-[140px]">{item.name}</div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setEditId(item.id)} data-testid={`btn-edit-wl-${item.id}`}>
-                          <Pencil className="w-3 h-3" />
-                        </Button>
-                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive hover:text-destructive" onClick={() => setDeleteId(item.id)} data-testid={`btn-delete-wl-${item.id}`}>
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {price ? (
-                      <div className="flex items-end gap-2 mb-2">
-                        <span className="font-mono-nums font-semibold text-lg text-foreground">${fmt(price)}</span>
-                        <span className={cn("text-xs font-mono-nums mb-0.5", (change ?? 0) >= 0 ? "text-up" : "text-down")}>
-                          {(change ?? 0) >= 0 ? "+" : ""}{fmt(change ?? 0)}%
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="text-sm text-muted-foreground mb-2">Loading price...</div>
-                    )}
-
-                    {/* Alert thresholds */}
-                    <div className="flex items-center gap-3 text-xs">
-                      {item.alertLow && (
-                        <span className={cn("flex items-center gap-1", atLow ? "text-down font-semibold" : "text-muted-foreground")}>
-                          <TrendingDown className="w-3 h-3" />
-                          ≤${fmt(item.alertLow)}
-                        </span>
-                      )}
-                      {item.alertHigh && (
-                        <span className={cn("flex items-center gap-1", atHigh ? "text-up font-semibold" : "text-muted-foreground")}>
-                          <TrendingUp className="w-3 h-3" />
-                          ≥${fmt(item.alertHigh)}
-                        </span>
-                      )}
-                      {!item.alertLow && !item.alertHigh && (
-                        <span className="text-muted-foreground flex items-center gap-1">
-                          <BellOff className="w-3 h-3" />
-                          No alerts set
-                        </span>
-                      )}
-                    </div>
-
-                    {item.notes && (
-                      <p className="text-xs text-muted-foreground mt-1.5 truncate">{item.notes}</p>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-
-        {!isLoading && watchlist.length === 0 && (
-          <div className="col-span-full text-center py-12 text-muted-foreground">
-            <Eye className="w-8 h-8 mx-auto mb-3 opacity-30" />
-            <p className="text-sm">No stocks on your watchlist yet.</p>
-            <Button size="sm" className="mt-3 text-xs" onClick={() => setShowAdd(true)}>
-              <Plus className="w-3 h-3 mr-1.5" />
-              Add your first stock
-            </Button>
-          </div>
-        )}
+                  item={item}
+                  pd={prices[item.ticker]}
+                  index={i}
+                  onEdit={() => setEditId(item.id)}
+                  onDelete={() => setDeleteId(item.id)}
+                />
+              ))
+        }
       </div>
 
       {/* Add Dialog */}
@@ -302,25 +474,23 @@ export default function Watchlist() {
       <Dialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle className="text-sm">Remove from Watchlist?</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">Remove <strong>{watchlist.find(w => w.id === deleteId)?.ticker}</strong> from your watchlist?</p>
+          <p className="text-sm text-muted-foreground">
+            Remove <strong>{watchlist.find(w => w.id === deleteId)?.ticker}</strong> from your watchlist?
+          </p>
           <DialogFooter className="pt-3">
             <Button variant="outline" size="sm" onClick={() => setDeleteId(null)}>Cancel</Button>
-            <Button variant="destructive" size="sm" disabled={deleteMutation.isPending} onClick={() => deleteMutation.mutate(deleteId!)}>
+            <Button
+              data-testid="btn-confirm-delete-wl"
+              variant="destructive"
+              size="sm"
+              disabled={deleteMutation.isPending}
+              onClick={() => deleteMutation.mutate(deleteId!)}
+            >
               {deleteMutation.isPending ? "Removing..." : "Remove"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-// Add missing import
-function Eye(props: any) {
-  return (
-    <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
   );
 }
