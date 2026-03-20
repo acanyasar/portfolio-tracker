@@ -14,6 +14,8 @@ import Dividends from "./pages/Dividends";
 import Transactions from "./pages/Transactions";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/not-found";
 import { useAuth } from "./hooks/useAuth";
 import { Loader2 } from "lucide-react";
@@ -54,6 +56,8 @@ function AppLayout() {
       <Switch>
         <Route path="/login" component={Login} />
         <Route path="/register" component={Register} />
+        <Route path="/forgot-password" component={ForgotPassword} />
+        <Route path="/reset-password" component={ResetPassword} />
         <Route><Redirect to="/login" /></Route>
       </Switch>
     );

@@ -2,7 +2,9 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import passport from "passport";
 import bcrypt from "bcryptjs";
+import { randomBytes, createHash } from "crypto";
 import { storage } from "./storage";
+import { sendPasswordResetEmail } from "./email";
 import { insertHoldingSchema, insertWatchlistSchema, insertTransactionSchema, defaultWidgetPreferences } from "@shared/schema";
 import type { User } from "@shared/schema";
 import { z } from "zod";
@@ -294,7 +296,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   // ── Auth routes (unprotected) ──────────────────────────────────
 
   app.post("/api/auth/register", async (req, res) => {
-    const { username, password } = req.body ?? {};
+    const { username, password, email } = req.body ?? {};
     if (!username || !password) return res.status(400).json({ error: "username and password required" });
     if (typeof username !== "string" || username.length < 3) {
       return res.status(400).json({ error: "username must be at least 3 characters" });
@@ -304,12 +306,52 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     }
     const existing = await storage.getUserByUsername(username);
     if (existing) return res.status(409).json({ error: "Username already taken" });
+    if (email && typeof email === "string") {
+      const emailTaken = await storage.getUserByEmail(email);
+      if (emailTaken) return res.status(409).json({ error: "Email already in use" });
+    }
     const passwordHash = await bcrypt.hash(password, 12);
-    const user = await storage.createUser(username, passwordHash);
+    const user = await storage.createUser(username, passwordHash, email || undefined);
     req.login({ id: user.id, username: user.username }, (err) => {
       if (err) return res.status(500).json({ error: "Login failed after register" });
       return res.status(201).json({ id: user.id, username: user.username });
     });
+  });
+
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    const { email } = req.body ?? {};
+    // Always return 200 to prevent email enumeration
+    if (!email || typeof email !== "string") return res.status(200).json({ ok: true });
+    const user = await storage.getUserByEmail(email);
+    if (user) {
+      const rawToken = randomBytes(32).toString("hex");
+      const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      await storage.setResetToken(user.id, tokenHash, expiresAt);
+      const appUrl = process.env.APP_URL ?? "http://localhost:3001";
+      const resetUrl = `${appUrl}/#/reset-password?token=${rawToken}`;
+      sendPasswordResetEmail(email, resetUrl).catch(err =>
+        console.error("[email] Failed to send password reset email:", err)
+      );
+    }
+    return res.status(200).json({ ok: true });
+  });
+
+  app.post("/api/auth/reset-password", async (req, res) => {
+    const { token, newPassword } = req.body ?? {};
+    if (!token || !newPassword || typeof token !== "string" || typeof newPassword !== "string") {
+      return res.status(400).json({ error: "token and newPassword required" });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters" });
+    }
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    const user = await storage.getUserByResetToken(tokenHash);
+    if (!user) return res.status(400).json({ error: "Invalid or expired reset link" });
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await storage.updatePassword(user.id, passwordHash);
+    await storage.clearResetToken(user.id);
+    return res.status(200).json({ ok: true });
   });
 
   app.post("/api/auth/login", (req, res, next) => {

@@ -40,8 +40,8 @@ export function useAuth() {
   });
 
   const registerMutation = useMutation({
-    mutationFn: ({ username, password }: { username: string; password: string }) =>
-      apiRequest("POST", "/api/auth/register", { username, password }),
+    mutationFn: ({ username, password, email }: { username: string; password: string; email?: string }) =>
+      apiRequest("POST", "/api/auth/register", { username, password, email }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
     },

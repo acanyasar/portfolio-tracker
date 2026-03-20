@@ -15,6 +15,9 @@ export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  email: text("email").unique(),
+  resetToken: text("reset_token"),
+  resetTokenExpiresAt: timestamp("reset_token_expires_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   dashboardWidgets: jsonb("dashboard_widgets").$type<WidgetPreferences>().notNull().default(defaultWidgetPreferences),
 });

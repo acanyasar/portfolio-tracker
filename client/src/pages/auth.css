@@ -1,0 +1,238 @@
+/* ── Auth page custom styles ────────────────────────────────────────────────
+   Tailwind handles layout/spacing/typography. This file covers:
+   - Animated background (grid + glow orbs)
+   - Glassmorphism card (backdrop-filter + @supports guard)
+   - Custom inputs with icon slots
+   - CTA button gradient + hover
+   - Loading spinner
+   - Password strength meter
+   - Error block
+   - Entrance animations
+────────────────────────────────────────────────────────────────────────── */
+
+/* ── Root container ─────────────────────────────────────────────────── */
+.auth-root {
+  position: fixed;
+  inset: 0;
+  background-color: #07070c;
+  overflow: hidden;
+}
+
+/* ── Grid overlay ───────────────────────────────────────────────────── */
+.auth-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+}
+
+/* ── Glow orbs ──────────────────────────────────────────────────────── */
+.auth-orb {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.auth-orb--indigo {
+  width: 520px;
+  height: 520px;
+  top: -140px;
+  left: -100px;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.28) 0%, transparent 70%);
+  filter: blur(72px);
+  animation: orbDriftA 22s ease-in-out infinite alternate;
+}
+
+.auth-orb--green {
+  width: 380px;
+  height: 380px;
+  bottom: -80px;
+  right: 4%;
+  background: radial-gradient(circle, rgba(34, 197, 94, 0.18) 0%, transparent 70%);
+  filter: blur(64px);
+  animation: orbDriftB 18s ease-in-out infinite alternate;
+}
+
+.auth-orb--orange {
+  width: 280px;
+  height: 280px;
+  top: 42%;
+  right: -50px;
+  background: radial-gradient(circle, rgba(251, 146, 60, 0.15) 0%, transparent 70%);
+  filter: blur(56px);
+  animation: orbDriftC 25s ease-in-out infinite alternate;
+}
+
+@keyframes orbDriftA {
+  from { transform: translate(0, 0); }
+  33%  { transform: translate(60px, 80px); }
+  66%  { transform: translate(-30px, 130px); }
+  to   { transform: translate(40px, 200px); }
+}
+
+@keyframes orbDriftB {
+  from { transform: translate(0, 0); }
+  40%  { transform: translate(-50px, -60px); }
+  to   { transform: translate(30px, -120px); }
+}
+
+@keyframes orbDriftC {
+  from { transform: translate(0, 0); }
+  50%  { transform: translate(-40px, 60px); }
+  to   { transform: translate(20px, -80px); }
+}
+
+/* ── Entrance animations ────────────────────────────────────────────── */
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(18px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.auth-page-enter {
+  animation: pageIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ── Glassmorphism card ─────────────────────────────────────────────── */
+.auth-card {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 32px 64px rgba(0, 0, 0, 0.5),
+    0 0 80px rgba(99, 102, 241, 0.07);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .auth-card {
+    backdrop-filter: blur(20px) saturate(1.4);
+    -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  }
+}
+
+/* ── Inputs ─────────────────────────────────────────────────────────── */
+.auth-input {
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.875rem;
+  padding: 0 0.75rem;
+  height: 2.5rem;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.auth-input::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.auth-input:focus,
+.auth-input:focus-visible {
+  border-color: rgba(99, 102, 241, 0.65);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* Input with left icon: offset text so it doesn't overlap the icon */
+.auth-input--icon {
+  padding-left: 2.5rem;
+}
+
+/* Absolutely-positioned icon inside the input wrapper */
+.auth-input-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 15px;
+  height: 15px;
+  color: rgba(255, 255, 255, 0.32);
+  pointer-events: none;
+}
+
+/* ── Primary button ─────────────────────────────────────────────────── */
+.auth-btn {
+  background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  height: 2.5rem;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.28);
+}
+
+.auth-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(99, 102, 241, 0.42);
+}
+
+.auth-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.28);
+}
+
+.auth-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── Loading spinner ────────────────────────────────────────────────── */
+@keyframes authSpin {
+  to { transform: rotate(360deg); }
+}
+
+.auth-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: authSpin 0.65s linear infinite;
+  flex-shrink: 0;
+}
+
+/* ── Password strength meter ────────────────────────────────────────── */
+.auth-strength-bars {
+  display: flex;
+  gap: 4px;
+  margin-top: 7px;
+}
+
+.auth-strength-bar {
+  height: 3px;
+  flex: 1;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.09);
+  transition: background 0.25s;
+}
+
+.auth-strength-bar--active-1 { background: #ef4444; }
+.auth-strength-bar--active-2 { background: #f59e0b; }
+.auth-strength-bar--active-3 { background: #f59e0b; }
+.auth-strength-bar--active-4 { background: #22c55e; }
+
+/* ── Error block ────────────────────────────────────────────────────── */
+.auth-error {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.22);
+  border-radius: 7px;
+  font-size: 0.8125rem;
+  padding: 0.5rem 0.75rem;
+  line-height: 1.4;
+}

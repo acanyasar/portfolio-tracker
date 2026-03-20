@@ -1,4 +1,4 @@
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, gt } from "drizzle-orm";
 import {
   users, holdings, watchlist, transactions, notifications, priceCache,
   type WidgetPreferences, defaultWidgetPreferences,
@@ -14,8 +14,14 @@ export interface IStorage {
   // Auth
   getUserById(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(username: string, passwordHash: string): Promise<User>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  createUser(username: string, passwordHash: string, email?: string): Promise<User>;
   updateUserPreferences(id: number, prefs: WidgetPreferences): Promise<User | undefined>;
+  // Password reset
+  setResetToken(userId: number, tokenHash: string, expiresAt: Date): Promise<void>;
+  getUserByResetToken(tokenHash: string): Promise<User | undefined>;
+  clearResetToken(userId: number): Promise<void>;
+  updatePassword(userId: number, passwordHash: string): Promise<void>;
 
   // Holdings
   getHoldings(userId: number): Promise<Holding[]>;
@@ -67,7 +73,7 @@ export class MemoryStorage implements IStorage {
 
   constructor() {
     // Create a default memory user (id=1)
-    const defaultUser: User = { id: 1, username: "admin", passwordHash: "", createdAt: new Date(), dashboardWidgets: defaultWidgetPreferences };
+    const defaultUser: User = { id: 1, username: "admin", passwordHash: "", email: null, resetToken: null, resetTokenExpiresAt: null, createdAt: new Date(), dashboardWidgets: defaultWidgetPreferences };
     this.usersMap.set(1, defaultUser);
     this.userIdCounter = 2;
 
@@ -106,11 +112,32 @@ export class MemoryStorage implements IStorage {
   async getUserByUsername(username: string): Promise<User | undefined> {
     return Array.from(this.usersMap.values()).find(u => u.username === username);
   }
-  async createUser(username: string, passwordHash: string): Promise<User> {
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    return Array.from(this.usersMap.values()).find(u => u.email === email);
+  }
+  async createUser(username: string, passwordHash: string, email?: string): Promise<User> {
     const id = this.userIdCounter++;
-    const user: User = { id, username, passwordHash, createdAt: new Date(), dashboardWidgets: defaultWidgetPreferences };
+    const user: User = { id, username, passwordHash, email: email ?? null, resetToken: null, resetTokenExpiresAt: null, createdAt: new Date(), dashboardWidgets: defaultWidgetPreferences };
     this.usersMap.set(id, user);
     return user;
+  }
+  async setResetToken(userId: number, tokenHash: string, expiresAt: Date): Promise<void> {
+    const user = this.usersMap.get(userId);
+    if (user) this.usersMap.set(userId, { ...user, resetToken: tokenHash, resetTokenExpiresAt: expiresAt });
+  }
+  async getUserByResetToken(tokenHash: string): Promise<User | undefined> {
+    const now = new Date();
+    return Array.from(this.usersMap.values()).find(
+      u => u.resetToken === tokenHash && u.resetTokenExpiresAt != null && u.resetTokenExpiresAt > now
+    );
+  }
+  async clearResetToken(userId: number): Promise<void> {
+    const user = this.usersMap.get(userId);
+    if (user) this.usersMap.set(userId, { ...user, resetToken: null, resetTokenExpiresAt: null });
+  }
+  async updatePassword(userId: number, passwordHash: string): Promise<void> {
+    const user = this.usersMap.get(userId);
+    if (user) this.usersMap.set(userId, { ...user, passwordHash });
   }
   async updateUserPreferences(id: number, prefs: WidgetPreferences): Promise<User | undefined> {
     const user = this.usersMap.get(id);
@@ -250,10 +277,34 @@ export class DatabaseStorage implements IStorage {
     const rows = await db.select().from(users).where(eq(users.username, username));
     return rows[0];
   }
-  async createUser(username: string, passwordHash: string): Promise<User> {
+  async getUserByEmail(email: string): Promise<User | undefined> {
     const { db } = await import("./db");
-    const rows = await db.insert(users).values({ username, passwordHash }).returning();
+    const rows = await db.select().from(users).where(eq(users.email, email));
     return rows[0];
+  }
+  async createUser(username: string, passwordHash: string, email?: string): Promise<User> {
+    const { db } = await import("./db");
+    const rows = await db.insert(users).values({ username, passwordHash, email: email ?? null }).returning();
+    return rows[0];
+  }
+  async setResetToken(userId: number, tokenHash: string, expiresAt: Date): Promise<void> {
+    const { db } = await import("./db");
+    await db.update(users).set({ resetToken: tokenHash, resetTokenExpiresAt: expiresAt }).where(eq(users.id, userId));
+  }
+  async getUserByResetToken(tokenHash: string): Promise<User | undefined> {
+    const { db } = await import("./db");
+    const rows = await db.select().from(users).where(
+      and(eq(users.resetToken, tokenHash), gt(users.resetTokenExpiresAt, new Date()))
+    );
+    return rows[0];
+  }
+  async clearResetToken(userId: number): Promise<void> {
+    const { db } = await import("./db");
+    await db.update(users).set({ resetToken: null, resetTokenExpiresAt: null }).where(eq(users.id, userId));
+  }
+  async updatePassword(userId: number, passwordHash: string): Promise<void> {
+    const { db } = await import("./db");
+    await db.update(users).set({ passwordHash }).where(eq(users.id, userId));
   }
   async updateUserPreferences(id: number, prefs: WidgetPreferences): Promise<User | undefined> {
     const { db } = await import("./db");
