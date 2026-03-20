@@ -13,6 +13,7 @@ declare global {
     interface User {
       id: number;
       username: string;
+      dashboardWidgets?: import("@shared/schema").WidgetPreferences;
     }
   }
 }
@@ -38,7 +39,7 @@ export function configurePassport(storage: IStorage) {
     try {
       const user = await storage.getUserById(id);
       if (!user) return done(null, false);
-      done(null, { id: user.id, username: user.username });
+      done(null, { id: user.id, username: user.username, dashboardWidgets: user.dashboardWidgets });
     } catch (err) {
       done(err);
     }
