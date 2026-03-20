@@ -507,6 +507,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           totalValue: Math.abs(diff) * price,
           date: new Date().toISOString().split("T")[0],
           notes: "",
+          realizedPnl: (price - existing.avgCost) * Math.abs(diff),
         });
       }
     }
@@ -533,6 +534,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         totalValue: existing.shares * sellPrice,
         date: new Date().toISOString().split("T")[0],
         notes: "",
+        realizedPnl: (sellPrice - existing.avgCost) * existing.shares,
       });
     }
 
@@ -643,8 +645,57 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       }
     }
 
-    const tx = await storage.createTransaction(userId, parsed.data);
+    let realizedPnl: number | null = null;
+    if ((type === "SELL" || type === "SELL_ALL") && existing) {
+      realizedPnl = (price - existing.avgCost) * shares;
+    }
+    const tx = await storage.createTransaction(userId, { ...parsed.data, realizedPnl });
     res.status(201).json(tx);
+  });
+
+  app.delete("/api/transactions/:id", async (req, res) => {
+    const userId = (req.user as User).id;
+    const id = parseInt(req.params.id);
+    const tx = await storage.getTransactionById(userId, id);
+    if (!tx) return res.status(404).json({ error: "Not found" });
+
+    const allHoldings = await storage.getHoldings(userId);
+    const holding = allHoldings.find(h => h.ticker.toUpperCase() === tx.ticker.toUpperCase());
+
+    if (tx.type === "BUY") {
+      if (holding) {
+        const newShares = holding.shares - tx.shares;
+        if (newShares <= 0) {
+          await storage.deleteHolding(userId, holding.id);
+        } else {
+          // Reverse the weighted average: recover cost basis before this buy
+          const newAvgCost = (holding.shares * holding.avgCost - tx.shares * tx.price) / newShares;
+          await storage.updateHolding(userId, holding.id, { shares: newShares, avgCost: Math.max(newAvgCost, 0) });
+        }
+      }
+    } else if (tx.type === "SELL" || tx.type === "SELL_ALL") {
+      // Recover avgCost from realizedPnl if available, otherwise fall back to sell price
+      const recoveredAvgCost = tx.realizedPnl != null
+        ? tx.price - (tx.realizedPnl / tx.shares)
+        : tx.price;
+      if (holding) {
+        // Partial sell was reversed — add shares back (avgCost unchanged on sells)
+        await storage.updateHolding(userId, holding.id, { shares: holding.shares + tx.shares });
+      } else {
+        // Holding was fully sold — recreate it
+        await storage.createHolding(userId, {
+          ticker: tx.ticker.toUpperCase(),
+          name: tx.name,
+          shares: tx.shares,
+          avgCost: recoveredAvgCost,
+          sector: "Other",
+          notes: "",
+        });
+      }
+    }
+
+    await storage.deleteTransaction(userId, id);
+    res.status(204).end();
   });
 
   // ── Notifications ─────────────────────────────────────────────
@@ -951,7 +1002,12 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
   app.get("/api/portfolio/summary", async (req, res) => {
     const userId = (req.user as User).id;
-    const holdingsList = await storage.getHoldings(userId);
+    const [holdingsList, txList] = await Promise.all([
+      storage.getHoldings(userId),
+      storage.getTransactions(userId),
+    ]);
+    const totalRealizedPnl = txList.reduce((sum, tx) => sum + (tx.realizedPnl ?? 0), 0);
+    const closedTradeCount = txList.filter(tx => (tx.type === "SELL" || tx.type === "SELL_ALL") && tx.realizedPnl != null).length;
     const tickers = Array.from(new Set(
       holdingsList.filter(h => h.ticker !== "CASH").map(h => h.ticker.toUpperCase())
     ));
@@ -998,6 +1054,8 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       totalPnl: totalInvestedValue - totalInvestedCost,
       totalPnlPercent: totalInvestedCost > 0 ? ((totalInvestedValue - totalInvestedCost) / totalInvestedCost) * 100 : 0,
       cashValue: holdingsList.filter(h => h.ticker === "CASH").reduce((s, h) => s + h.shares, 0),
+      totalRealizedPnl,
+      closedTradeCount,
     });
   });
 

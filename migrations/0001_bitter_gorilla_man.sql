@@ -1,0 +1,1 @@
+ALTER TABLE "transactions" ADD COLUMN "realized_pnl" real;

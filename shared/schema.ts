@@ -71,6 +71,7 @@ export const transactions = pgTable("transactions", {
   totalValue: real("total_value").notNull(),
   date: text("date").notNull(),  // ISO date string
   notes: text("notes").default(""),
+  realizedPnl: real("realized_pnl"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

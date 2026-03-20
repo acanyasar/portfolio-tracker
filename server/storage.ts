@@ -40,7 +40,9 @@ export interface IStorage {
 
   // Transactions
   getTransactions(userId: number): Promise<Transaction[]>;
+  getTransactionById(userId: number, id: number): Promise<Transaction | undefined>;
   createTransaction(userId: number, data: InsertTransaction): Promise<Transaction>;
+  deleteTransaction(userId: number, id: number): Promise<boolean>;
 
   // Notifications
   getUnreadNotifications(userId: number): Promise<Notification[]>;
@@ -214,9 +216,18 @@ export class MemoryStorage implements IStorage {
   }
   async createTransaction(userId: number, data: InsertTransaction): Promise<Transaction> {
     const id = this.transactionIdCounter++;
-    const tx: Transaction = { id, userId, ...data, notes: data.notes ?? "", createdAt: new Date() };
+    const tx: Transaction = { id, userId, ...data, notes: data.notes ?? "", realizedPnl: data.realizedPnl ?? null, createdAt: new Date() };
     this.transactionsMap.set(id, tx);
     return tx;
+  }
+  async getTransactionById(userId: number, id: number): Promise<Transaction | undefined> {
+    const tx = this.transactionsMap.get(id);
+    return tx?.userId === userId ? tx : undefined;
+  }
+  async deleteTransaction(userId: number, id: number): Promise<boolean> {
+    const tx = this.transactionsMap.get(id);
+    if (!tx || tx.userId !== userId) return false;
+    return this.transactionsMap.delete(id);
   }
 
   // Notifications
@@ -378,6 +389,16 @@ export class DatabaseStorage implements IStorage {
     const { db } = await import("./db");
     const rows = await db.insert(transactions).values({ ...data, userId }).returning();
     return rows[0];
+  }
+  async getTransactionById(userId: number, id: number): Promise<Transaction | undefined> {
+    const { db } = await import("./db");
+    const rows = await db.select().from(transactions).where(and(eq(transactions.id, id), eq(transactions.userId, userId)));
+    return rows[0];
+  }
+  async deleteTransaction(userId: number, id: number): Promise<boolean> {
+    const { db } = await import("./db");
+    const rows = await db.delete(transactions).where(and(eq(transactions.id, id), eq(transactions.userId, userId))).returning({ id: transactions.id });
+    return rows.length > 0;
   }
 
   // Notifications

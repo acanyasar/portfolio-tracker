@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { TrendingUp, TrendingDown, DollarSign, BarChart3, RefreshCw, AlertCircle, Banknote, ChevronUp, ChevronDown } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, RefreshCw, AlertCircle, Banknote, ChevronUp, ChevronDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,8 @@ interface PortfolioSummary {
   totalPnl: number;
   totalPnlPercent: number;
   cashValue?: number;
+  totalRealizedPnl?: number;
+  closedTradeCount?: number;
 }
 
 function fmtCurrency(n: number) {
@@ -126,6 +128,10 @@ export default function Dashboard() {
   // Stats
   const investedHoldings = data?.holdings.filter(h => !h.isCash) ?? [];
   const cashValue = data?.cashValue ?? 0;
+  const realizedPnl = data?.totalRealizedPnl ?? 0;
+  const unrealizedPnl = data?.totalPnl ?? 0;
+  const combinedPnl = unrealizedPnl + realizedPnl;
+  const closedTradeCount = data?.closedTradeCount ?? 0;
 
   return (
     <div className="p-6 space-y-6">
@@ -175,22 +181,32 @@ export default function Dashboard() {
               sub={
                 <div className="flex flex-col gap-0.5">
                   <span className="text-xs text-muted-foreground">Invested: {fmtCurrency(data.totalCost)}</span>
-                  {cashValue > 0 && (
-                    <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-0.5">
-                      <Banknote className="w-3 h-3" /> Cash: {fmtCurrency(cashValue)}
-                    </span>
-                  )}
+                  <span className="text-xs text-muted-foreground">
+                    {investedHoldings.length} positions · {new Set(investedHoldings.map(h => h.sector)).size} sectors
+                    {cashValue > 0 && <span className="ml-1 text-green-600 dark:text-green-400">+ cash</span>}
+                  </span>
                 </div>
               }
             />
             <KpiCard
-              title="Total P&L"
-              value={(data.totalPnl >= 0 ? "+" : "") + fmtCurrency(data.totalPnl)}
-              icon={data.totalPnl >= 0 ? TrendingUp : TrendingDown}
-              colorClass={data.totalPnl >= 0 ? "text-up" : "text-down"}
+              title="Unrealized P&L"
+              value={(unrealizedPnl >= 0 ? "+" : "") + fmtCurrency(unrealizedPnl)}
+              icon={unrealizedPnl >= 0 ? TrendingUp : TrendingDown}
+              colorClass={unrealizedPnl >= 0 ? "text-up" : "text-down"}
               sub={
-                <span className={cn("text-xs font-mono-nums", data.totalPnl >= 0 ? "text-up" : "text-down")}>
-                  {data.totalPnl >= 0 ? "+" : ""}{fmt(data.totalPnlPercent)}%
+                <span className={cn("text-xs font-mono-nums", unrealizedPnl >= 0 ? "text-up" : "text-down")}>
+                  {unrealizedPnl >= 0 ? "+" : ""}{fmt(data.totalPnlPercent)}% · open positions
+                </span>
+              }
+            />
+            <KpiCard
+              title="Realized P&L"
+              value={(realizedPnl >= 0 ? "+" : "") + fmtCurrency(realizedPnl)}
+              icon={realizedPnl >= 0 ? TrendingUp : TrendingDown}
+              colorClass={realizedPnl !== 0 ? (realizedPnl >= 0 ? "text-up" : "text-down") : undefined}
+              sub={
+                <span className="text-xs text-muted-foreground">
+                  {closedTradeCount} closed trade{closedTradeCount !== 1 ? "s" : ""}
                 </span>
               }
             />
@@ -199,15 +215,9 @@ export default function Dashboard() {
               value={(todayPnl >= 0 ? "+" : "") + fmtCurrency(todayPnl)}
               icon={todayPnl >= 0 ? TrendingUp : TrendingDown}
               colorClass={todayPnl >= 0 ? "text-up" : "text-down"}
-            />
-            <KpiCard
-              title="Positions"
-              value={String(investedHoldings.length)}
-              icon={BarChart3}
               sub={
-                <span className="text-xs text-muted-foreground">
-                  {new Set(investedHoldings.map(h => h.sector)).size} sectors
-                  {cashValue > 0 && <span className="ml-1 text-green-600 dark:text-green-400">+ cash</span>}
+                <span className={cn("text-xs font-mono-nums", combinedPnl >= 0 ? "text-up" : "text-down")}>
+                  Total: {combinedPnl >= 0 ? "+" : ""}{fmtCurrency(combinedPnl)}
                 </span>
               }
             />
