@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useParams } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { AuthLogo } from "./AuthLogo";
 import { PasswordStrength } from "@/components/PasswordStrength";
@@ -14,14 +14,8 @@ function LockIcon() {
   );
 }
 
-function getTokenFromHash(): string | null {
-  const hash = window.location.hash; // e.g. "#/reset-password?token=abc123"
-  const queryString = hash.includes("?") ? hash.split("?")[1] : "";
-  return new URLSearchParams(queryString).get("token");
-}
-
 export default function ResetPassword() {
-  const token = getTokenFromHash();
+  const { token } = useParams<{ token: string }>();
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);

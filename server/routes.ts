@@ -329,7 +329,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
       await storage.setResetToken(user.id, tokenHash, expiresAt);
       const appUrl = process.env.APP_URL ?? "http://localhost:3001";
-      const resetUrl = `${appUrl}/#/reset-password?token=${rawToken}`;
+      const resetUrl = `${appUrl}/#/reset-password/${rawToken}`;
       sendPasswordResetEmail(email, resetUrl).catch(err =>
         console.error("[email] Failed to send password reset email:", err)
       );
