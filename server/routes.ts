@@ -9,6 +9,8 @@ import { insertHoldingSchema, insertWatchlistSchema, insertTransactionSchema, de
 import type { User } from "@shared/schema";
 import { z } from "zod";
 import { getPrice, fetchYahooPrice } from "./priceService";
+import { fetchPortfolioEvents } from "./eventsService";
+import { fetchYahooDividends } from "./dividendService";
 
 // Sector mapping from Yahoo Finance industry/sector strings
 function mapYahooSectorToAppSector(yahooSector?: string, yahooIndustry?: string): string {
@@ -95,93 +97,6 @@ async function fetchYahooQuoteSummary(ticker: string): Promise<{
   }
 }
 
-async function fetchYahooDividends(ticker: string): Promise<{
-  dividendRate: number;
-  dividendYield: number;
-  exDividendDate: string | null;
-  nextPaymentDate: string | null;
-  payoutFrequency: number;
-  lastDividendValue: number;
-  nextPaymentAmount: number;
-} | null> {
-  try {
-    // Use v8 chart API with dividend events — works without a crumb/cookie.
-    // Extend period2 one year forward so projected future payments are included.
-    const nowSec = Math.floor(Date.now() / 1000);
-    const twoYearsAgo = nowSec - 2 * 365 * 24 * 60 * 60;
-    const oneYearForward = nowSec + 365 * 24 * 60 * 60;
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}` +
-      `?period1=${twoYearsAgo}&period2=${oneYearForward}&interval=1mo&events=dividends`;
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "application/json",
-      },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const meta = data?.chart?.result?.[0]?.meta;
-    const divEvents = data?.chart?.result?.[0]?.events?.dividends;
-    if (!meta) return null;
-
-    // No dividend events → not a dividend payer
-    if (!divEvents || Object.keys(divEvents).length === 0) return null;
-
-    const allDivs = (Object.values(divEvents) as Array<{ amount: number; date: number }>)
-      .sort((a, b) => a.date - b.date);
-
-    const pastDivs   = allDivs.filter(d => d.date <= nowSec);
-    const futureDivs = allDivs.filter(d => d.date > nowSec);
-
-    // Annual rate: sum of dividends paid in the last 12 months
-    const oneYearAgo = nowSec - 365 * 24 * 60 * 60;
-    const lastYearDivs = pastDivs.filter(d => d.date > oneYearAgo);
-    const dividendRate = lastYearDivs.reduce((s, d) => s + d.amount, 0);
-
-    // Infer payout frequency from payments per year (clamp 1–12)
-    const payoutFrequency = lastYearDivs.length > 0
-      ? Math.max(1, Math.min(12, lastYearDivs.length))
-      : 4;
-
-    const currentPrice = meta.regularMarketPrice ?? 1;
-    const dividendYield = currentPrice > 0 ? dividendRate / currentPrice : 0;
-
-    // Most recent past payment (skip any $0 entries that are data artefacts)
-    const positivePastDivs = pastDivs.filter(d => d.amount > 0);
-    const lastDividendValue = positivePastDivs.length > 0
-      ? positivePastDivs[positivePastDivs.length - 1].amount
-      : 0;
-
-    // Ex-dividend date ≈ date of last past payment
-    const exDividendDate = pastDivs.length > 0
-      ? new Date(pastDivs[pastDivs.length - 1].date * 1000).toISOString().split("T")[0]
-      : null;
-
-    // Next payment date: use first projected future dividend if available,
-    // otherwise estimate from last payment + payout interval.
-    let nextPaymentDate: string | null = null;
-    if (futureDivs.length > 0) {
-      nextPaymentDate = new Date(futureDivs[0].date * 1000).toISOString().split("T")[0];
-    } else if (pastDivs.length > 0) {
-      const lastPaymentSec = pastDivs[pastDivs.length - 1].date;
-      const intervalDays = Math.round(365 / payoutFrequency);
-      // Advance from last payment date until we land in the future
-      let nextSec = lastPaymentSec + intervalDays * 24 * 60 * 60;
-      while (nextSec <= nowSec) nextSec += intervalDays * 24 * 60 * 60;
-      nextPaymentDate = new Date(nextSec * 1000).toISOString().split("T")[0];
-    }
-
-    // Amount for the specific next payment: prefer the projected future event's amount,
-    // fall back to the last past dividend amount.
-    const nextPaymentAmount = futureDivs.length > 0 && futureDivs[0].amount > 0
-      ? futureDivs[0].amount
-      : lastDividendValue;
-
-    return { dividendRate, dividendYield, exDividendDate, nextPaymentDate, payoutFrequency, lastDividendValue, nextPaymentAmount };
-  } catch {
-    return null;
-  }
-}
 
 async function fetchDividendHistory5yr(ticker: string): Promise<{
   cagr1yr: number | null;
@@ -928,6 +843,19 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
     const totalAnnual = paying.reduce((s, h) => s + h.annualIncome, 0);
     res.json({ months, totalAnnual, avgMonthly: totalAnnual / 12 });
+  });
+
+  // ── Portfolio events (earnings, dividends, ex-dividend) ──────────────
+
+  app.get("/api/portfolio/events", async (req, res) => {
+    const userId = (req.user as User).id;
+    try {
+      const events = await fetchPortfolioEvents(userId, storage);
+      res.json({ events });
+    } catch (e) {
+      console.error("events endpoint error:", e);
+      res.status(500).json({ error: "Failed to fetch upcoming events" });
+    }
   });
 
   // ── Portfolio history ─────────────────────────────────────────
